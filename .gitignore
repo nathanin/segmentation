@@ -1,0 +1,4 @@
+*pyc
+deconv/
+unet/
+adversarial/
