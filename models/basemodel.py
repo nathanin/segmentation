@@ -9,17 +9,17 @@ slim = tf.contrib.slim
 class BaseModel(object):
     def __init__(self,
                  sess,
-                 mode,
-                 log_dir,
-                 dataset,
-                 bayesian,
-                 save_dir,
-                 n_classes,
-                 input_dims,
-                 input_channel,
-                 load_snapshot,
-                 learning_rate,
-                 load_snapshot_from,):
+                 mode = 'TRAINING',
+                 log_dir = './logs',
+                 dataset = None,
+                 bayesian = False,
+                 save_dir = './snapshot',
+                 n_classes = None,
+                 input_dims = None,
+                 input_channel = 3,
+                 load_snapshot = True,
+                 learning_rate = 1e-3,
+                 load_snapshot_from = None,):
         ## Constants / hyperparameters
         self.mode = mode
         self.log_dir = log_dir
@@ -45,7 +45,7 @@ class BaseModel(object):
             self.load_snapshot_from = None
         ## /end optionals
 
-        self.summary_iter = 50
+        self.summary_iter = 1
         self.init_op = tf.global_variables_initializer()
 
         ## Always needed
@@ -102,6 +102,13 @@ class BaseModel(object):
         input_y = self.dataset.mask_op
         self.input_y = tf.cast(input_y, tf.uint8)
 
+        # h,w = self.input_x.get_shape().as_list()[1:3]
+        # target_h = tf.cast(h * self.input_ratio, tf.int32)
+        # target_w = tf.cast(w * self.input_ratio, tf.int32)
+        # self.input_x = tf.image.resize_bilinear(self.input_x, [target_h, target_w])
+        # self.input_y = tf.image.resize_nearest_neighbor(self.input_y, [target_h, target_w])
+        # self.input_y = tf.cast(self.input_y, tf.uint8)
+
         print 'input_x:', self.input_x.get_shape(), self.input_x.dtype
         print 'input_y:', self.input_y.get_shape(), self.input_y.dtype
 
@@ -135,8 +142,10 @@ class BaseModel(object):
             return
 
         self.loss_summary = tf.summary.scalar('loss', self.loss_op)
-        self.output_summary = tf.summary.image('mask', self.output, max_outputs=4)
+        self.gt_summary = tf.summary.image('gt', tf.cast(self.input_y, tf.float32), max_outputs=4)
         self.input_summary = tf.summary.image('img', self.input_x, max_outputs=4)
+        self.output_summary = tf.summary.image('mask', self.output, max_outputs=4)
+        # self.output_summary = tf.summary.image('mask', self.y_hat_sig, max_outputs=4)
 
         self.summary_op = tf.summary.merge_all()
 
@@ -149,7 +158,6 @@ class BaseModel(object):
         ## Check if we should summarize --- I think it takes a lot of time
         gs = tf.train.global_step(self.sess, self.global_step)
         if gs % self.summary_iter == 0:
-            print gs, 'writing summary'
             summary_str = self.sess.run([self.summary_op])[0]
             self.summary_writer.add_summary(summary_str,
                 tf.train.global_step(self.sess, self.global_step))

@@ -7,6 +7,20 @@ slim = tf.contrib.slim
 sys.path.insert(0, '.')
 from basemodel import BaseModel
 
+
+""" Implements U-Net (Ronneberger, et al 2015)
+
+@inproceedings{ronneberger2015u,
+  title={U-net: Convolutional networks for biomedical image segmentation},
+  author={Ronneberger, Olaf and Fischer, Philipp and Brox, Thomas},
+  booktitle={International Conference on Medical Image Computing and Computer-Assisted Intervention},
+  pages={234--241},
+  year={2015},
+  organization={Springer}
+}
+
+"""
+
 class UNetModel(BaseModel):
     def __init__(self,
         sess = None,
@@ -67,17 +81,6 @@ class UNetModel(BaseModel):
         self._init_saver(self.model_name)
 
 
-    """ Implements U-Net (Ronneberger, et al 2015)
-
-    @inproceedings{ronneberger2015u,
-      title={U-net: Convolutional networks for biomedical image segmentation},
-      author={Ronneberger, Olaf and Fischer, Philipp and Brox, Thomas},
-      booktitle={International Conference on Medical Image Computing and Computer-Assisted Intervention},
-      pages={234--241},
-      year={2015},
-      organization={Springer}
-    }
-    """
     def crop_tensor(self, tensor, target):
         h = target.shape[1]
         w = target.shape[2]

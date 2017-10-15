@@ -6,16 +6,30 @@ So what do I do?
 I write yet another solution (Fig. 1)
 
 ![https://imgs.xkcd.com/comics/standards.png](https://imgs.xkcd.com/comics/standards.png)
+
 Figure 1. The competing standards conundrum.
 
+## Models
+- Generic convolution / deconvolution model
+- FCN-{32, 16, 8}s
+- U-Net
 
 ## Structure
 
-Big assumption: your training data and masks are in two folders, named alike, and exist as individual images.
-Support for some more advanced data structures could probably be plug-and-play.
+Big assumption (my use case): training data and masks are in two folders, named alike, and exist as individual images.
+Support for some more advanced data structures is probably plug-and-play.
+But there is threading for the I/O and potential for on-the-fly augmentation, so that's still a plus.
+
 As-is, one can implement a training / application pipeline as so:
 
 ```
+import tensorflow as tf
+from models.unet import UNetModel
+
+[options] = ... ## Settings TODO: document these like with a picture or something
+features_path, labels_path = ... ## Source data
+paths = ... ## Some images for testing
+
 with tf.Session() as sess:
     ## Training
     dataset = ImageMaskDataSet(features_path, labels_path, [options])
@@ -33,11 +47,11 @@ with tf.Session() as sess:
 
 
 ## Features
-- Generalizable BaseModel class holds functions and hyperparameters for training, saving, tensorboard and inference
+- Hide all the ugly stuff in a `BaseModel` class with functions and hyperparameters for training, saving, tensorboard and inference
 - To implement a new model, copy + paste an existing `__init__` function, and implement the `model()` method
-- Support for customizable losses & multi-loss learning
 - Should be robust to input sizes (untested)
 
 
 #### Comments & Feedback
-Please use the issues section or email directly <ing.nathany@gmail.com>
+Please use the issues section to point where we can improve this thing.
+For other correspondence, email directly <ing.nathany@gmail.com>
