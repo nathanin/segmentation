@@ -34,7 +34,7 @@ config.gpu_options.allow_growth = True
 
 # init_op = tf.global_variables_initializer()
 
-itert=1
+itert=2
 
 
 with tf.Graph().as_default():
@@ -71,9 +71,9 @@ with tf.Graph().as_default():
 
         print 'Train/test loop:'
         tstart = time.time()
-        for _ in range(2):
+        for _ in range(10):
             tloop = time.time()
-            for _ in range(50):
+            for _ in range(100):
                 network.train_step()
 
             print 'Testing... loss={:3.5f}\tTime:{}'.format( network.test(),
