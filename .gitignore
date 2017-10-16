@@ -1,4 +1,5 @@
 *pyc
 deconv/
 unet/
+fcn/
 adversarial/

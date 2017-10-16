@@ -11,7 +11,7 @@ def bias_variable(shape, name=None):
     initial = tf.constant(0., shape=shape)
     return tf.Variable(initial, name=name)
 
-""" return 4-D tensor with shape = (batchsize, ...) """
+""" return 4-D tensor with shape = (batchsize, h, w, channels) """
 def load_images(paths, batchsize, crop_size):
     ## use numpy
     tensor = []
@@ -52,6 +52,7 @@ class ImageMaskDataSet(object):
                  n_classes = 2,
                  batch_size= 96,
                  crop_size =256,
+                 ratio     = 1.0,
                  capacity  =5000,
                  image_ext ='jpg',
                  mask_ext  ='png',
@@ -70,9 +71,11 @@ class ImageMaskDataSet(object):
         print 'Setting data hyperparams'
         self.batch_size = batch_size
         self.crop_size  = crop_size
+        self.ratio = ratio
         self.capacity  = capacity
         self.n_classes = n_classes
         self.threads = threads
+        self.image_ext = image_ext
 
         ## Set random seed to shuffle the same way..
         print 'Setting up image, mask queues'
@@ -98,9 +101,11 @@ class ImageMaskDataSet(object):
         print 'Setting up image and mask retrieval ops'
         with tf.name_scope('ImageMaskDataSet'):
             image_key, image_file = self.image_reader.read(self.feature_queue)
+            # image_op = tf.image.decode_jpeg(image_file, ratio=self.ratio)
             image_op = tf.image.decode_image(image_file)
 
             mask_key, mask_file = self.image_reader.read(self.mask_queue)
+            # mask_op = tf.image.decode_jpeg(mask_file, ratio=self.ratio)
             mask_op = tf.image.decode_image(mask_file)
 
             image_op, mask_op = self.preprocessing(image_op, mask_op)
@@ -116,6 +121,7 @@ class ImageMaskDataSet(object):
 
 
     def preprocessing(self, image, mask):
+        ## TODO: setup preprocessing via input_fn
         image = tf.divide(image, 255)
         mask  = tf.divide(mask, 255)
         ## Stack so that transforms are applied the right way
@@ -128,27 +134,12 @@ class ImageMaskDataSet(object):
 
         image, mask = tf.split(image_mask, [3,1], axis=2)
 
-        ## Convert to flat, onehot
-        # mask = tf.reshape(tensor=mask, shape=(-1, 1))
-        # mask = tf.one_hot(mask, self.n_classes)
-
         return image, mask
 
     def get_batch(self):
-        # image, mask = tf.train.shuffle_batch([self.image_op, self.mask_op],
-        #     batch_size = self.batch_size,
-        #     capacity   = self.capacity,
-        #     min_after_dequeue = 1000)
-
-        # print 'Getting batch from dataset'
         image, mask = self.sess.run([self.image_op, self.mask_op])
-
         return image, mask
 #/end ImageMaskDataSet
-
-
-
-
 
 
 """
