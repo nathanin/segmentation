@@ -4,8 +4,9 @@ import sys, time, os
 
 slim = tf.contrib.slim
 
+## TODO: change to use those folders with __init__
 sys.path.insert(0, '.')
-sys.path.insert(0, '..')
+sys.path.insert(0, '../utils')
 from basemodel import BaseModel
 from upsampling import bilinear_upsample_weights
 
@@ -141,10 +142,7 @@ class FCNModel(BaseModel):
         upsample_filter_np = bilinear_upsample_weights(32, self.n_classes)
         upsample_filter_tensor = tf.Variable(upsample_filter_np)
         batch_size, h, w, channels = net.get_shape().as_list()
-        output_h = h * 32
-        output_w = w * 32
-        output = tf.nn.conv2d_transpose(net, upsample_filter_tensor, [batch_size, output_h, output_w, channels], [1,32,32,1])
-
+        output = tf.nn.conv2d_transpose(net, upsample_filter_tensor, [batch_size, h*32, w*32, channels], [1,32,32,1])
         output = tf.image.resize_image_with_crop_or_pad(output, self.x_dim, self.y_dim)
         print 'fcn32s output', output.get_shape()
         return output
@@ -153,34 +151,23 @@ class FCNModel(BaseModel):
     def fcn16s(self, net):
         upscore_weights = bilinear_upsample_weights(2, self.n_classes)
         output_weights = bilinear_upsample_weights(16, self.n_classes)
-
         upscore_weights_tensor = tf.Variable(upscore_weights)
         output_weights_tensor = tf.Variable(output_weights)
-
         ## Score from pool4:
         pool4_score = slim.convolution2d(self.pool4, self.n_classes, 1, 1, padding='SAME', scope='pool4_score')
         pool4_h, pool4_w = pool4_score.get_shape().as_list()[1:3]
-        print 'pool4_score', pool4_score.get_shape()
-
         ## Upsample the stream
         batch_size, h, w, _ = net.get_shape().as_list()
         upscore = tf.nn.conv2d_transpose(net, upscore_weights_tensor,
             [batch_size, h*2, w*2, self.n_classes], [1,2,2,1])
-        print 'fcn16 upscore', upscore.get_shape()
-
         ## Crop pool4_score to be same shape as upscore
         upscore_pool4_crop = tf.image.resize_image_with_crop_or_pad(upscore, pool4_h, pool4_h)
-        print 'upscore_pool4_crop', upscore_pool4_crop.get_shape()
-
         ## Order invariant combination
         upscore = pool4_score + upscore_pool4_crop
-        print 'upscore ', upscore.get_shape()
-
         ## Final upsample
         h, w = upscore.get_shape().as_list()[1:3]
         upscore = tf.nn.conv2d_transpose(upscore, output_weights_tensor,
             [batch_size, h*16, w*16, self.n_classes], [1,16,16,1]) ## 4 * 16 = 64
-
         ## Force to be the same size as input
         upscore = tf.image.resize_image_with_crop_or_pad(upscore, self.x_dim, self.y_dim)
         print 'fcn16s upscore', upscore.get_shape()
@@ -191,54 +178,35 @@ class FCNModel(BaseModel):
         upscore_weights_3 = bilinear_upsample_weights(2, self.n_classes)
         upscore_weights_4 = bilinear_upsample_weights(2, self.n_classes)
         output_weights = bilinear_upsample_weights(8, self.n_classes)
-
         upscore_weights_3_tensor = tf.Variable(upscore_weights_3)
         upscore_weights_4_tensor = tf.Variable(upscore_weights_4)
         output_weights_tensor = tf.Variable(output_weights)
-
         ## Score from pool3:
         pool3_score = slim.convolution2d(self.pool3, self.n_classes, 1, 1, padding='SAME', scope='pool3_score')
         pool3_h, pool3_w = pool3_score.get_shape().as_list()[1:3]
-        print 'pool3_score', pool3_score.get_shape()
-
         ## Score from pool4:
         pool4_score = slim.convolution2d(self.pool4, self.n_classes, 1, 1, padding='SAME', scope='pool4_score')
         pool4_h, pool4_w = pool4_score.get_shape().as_list()[1:3]
-        print 'pool4_score', pool4_score.get_shape()
-
         ## Upsample the stream
         batch_size, h, w, _ = net.get_shape().as_list()
         upscore = tf.nn.conv2d_transpose(net, upscore_weights_4_tensor,
             [batch_size, h*2, w*2, self.n_classes], [1,2,2,1])
-        print 'stream upscore', upscore.get_shape()
-
         ## Crop pool4_score to be same shape as upscore
         upscore_pool4_crop = tf.image.resize_image_with_crop_or_pad(upscore, pool4_h, pool4_w)
-        print 'upscore_pool4_crop', upscore_pool4_crop.get_shape()
-
         ## Order invariant combination
         upscore = pool4_score + upscore_pool4_crop
-        print 'upscore ', upscore.get_shape()
-
         ## Repeat for pool3
         batch_size, h, w, _ = upscore.get_shape().as_list()
         upscore = tf.nn.conv2d_transpose(upscore, upscore_weights_3_tensor,
             [batch_size, h*2, w*2, self.n_classes], [1,2,2,1])
-        print 'stream upscore', upscore.get_shape()
-
         ## Crop pool4_score to be same shape as upscore
         upscore_pool3_crop = tf.image.resize_image_with_crop_or_pad(upscore, pool3_h, pool3_w)
-        print 'upscore_pool4_crop', upscore_pool3_crop.get_shape()
-
         ## Order invariant combination
         upscore = pool3_score + upscore_pool3_crop
-        print 'upscore ', upscore.get_shape()
-
         ## Final upsample
         h, w = upscore.get_shape().as_list()[1:3]
         upscore = tf.nn.conv2d_transpose(upscore, output_weights_tensor,
             [batch_size, h*8, w*8, self.n_classes], [1,8,8,1]) ## 4 * 16 = 64
-
         ## Force to be the same size as input
         upscore = tf.image.resize_image_with_crop_or_pad(upscore, self.x_dim, self.y_dim)
         print 'fcn16s upscore', upscore.get_shape()

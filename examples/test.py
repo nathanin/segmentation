@@ -21,25 +21,26 @@ import sys, time, random, cv2, os, glob
 import tensorflow as tf
 import numpy as np
 
-sys.path.insert(0, './models')
+sys.path.insert(0, '../models')
 from deconvolution import DeconvModel
 from unet import UNetModel
 from fcn import FCNModel
 
-sys.path.insert(0, '.')
-from utils import ImageMaskDataSet, load_images
-
+sys.path.insert(0, '../utils')
+from datasets import ImageMaskDataSet, load_images
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
-
-# init_op = tf.global_variables_initializer()
 
 itert=1
 feat_dir = '/Users/nathaning/_original_data/nuclei/pca/img'
 mask_dir = '/Users/nathaning/_original_data/nuclei/pca/mask'
 
-img_list = sorted(glob.glob(os.path.join(feat_dir, '*.png')))
+feat_dir = '../data/img'
+mask_dir = '../data/mask'
+image_ext = 'png'
+
+img_list = sorted(glob.glob(os.path.join(feat_dir, '*.'+image_ext)))
 inference_dir = './fcn/inference'
 
 with tf.Graph().as_default():
@@ -49,7 +50,7 @@ with tf.Graph().as_default():
         Dataset used to define batch and input shape
         """
         dataset = ImageMaskDataSet(feat_dir, mask_dir,
-            image_ext  = 'png',
+            image_ext  = image_ext,
             n_classes  = 2,
             batch_size = 8,
             crop_size  = 128,
@@ -96,7 +97,7 @@ with tf.Graph().as_default():
             for _ in range(50):
                 network.train_step()
 
-            print 'Testing... loss={:3.5f}\tTime:{}'.format( network.test(),
+            print 'Testing... loss={:3.5f}\tTime:{}'.format(network.test(),
                 time.time()-tloop)
 
             network.snapshot()
@@ -108,7 +109,7 @@ with tf.Graph().as_default():
             from being instantiated
             can still call model.infer() from TRAINING mode
 
-            ... INFERENCE mode was unnecessary ???
+            .......... was INFERENCE mode unnecessary ???
             """
             img_tensor = load_images(img_list, 8, 128)
             output = network.infer(img_tensor)
@@ -125,22 +126,9 @@ with tf.Graph().as_default():
                 outname_ = os.path.join(inference_dir, '{}_.jpg'.format(k))
                 cv2.imwrite(outname, img*255)
                 cv2.imwrite(outname_, img_[:,:,::-1]*255)
+        #/end training loop
 
         print 'Time: {}'.format(time.time()-tstart)
         print 'Done'
         coord.request_stop()
         coord.join(threads)
-
-
-
-
-
-        # network = DeconvModel(
-        #     sess=sess,
-        #     save_dir = './unet/snapshots',
-        #     mode='INFERENCE' )
-
-        # network = UNetModel(
-        #     sess = sess,
-        #     save_dir = './unet/snapshots',
-        #     mode = 'INFERENCE')

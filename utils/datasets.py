@@ -11,7 +11,7 @@ def bias_variable(shape, name=None):
     initial = tf.constant(0., shape=shape)
     return tf.Variable(initial, name=name)
 
-""" return 4-D tensor with shape = (batchsize, ...) """
+""" return 4-D tensor with shape = (batchsize, h, w, channels) """
 def load_images(paths, batchsize, crop_size):
     ## use numpy
     tensor = []
@@ -137,20 +137,9 @@ class ImageMaskDataSet(object):
         return image, mask
 
     def get_batch(self):
-        # image, mask = tf.train.shuffle_batch([self.image_op, self.mask_op],
-        #     batch_size = self.batch_size,
-        #     capacity   = self.capacity,
-        #     min_after_dequeue = 1000)
-
-        # print 'Getting batch from dataset'
         image, mask = self.sess.run([self.image_op, self.mask_op])
-
         return image, mask
 #/end ImageMaskDataSet
-
-
-
-
 
 
 """
