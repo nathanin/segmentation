@@ -21,7 +21,7 @@ class DeconvModel(BaseModel):
         learning_rate = 1e-4,
         load_snapshot = None,
         load_snapshot_from = None,
-        n_kernels = 16,
+        n_kernels = 32,
         adversarial_training = False):
 
 

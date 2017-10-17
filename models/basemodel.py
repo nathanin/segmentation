@@ -128,15 +128,20 @@ class BaseModel(object):
         if self.mode == 'INFERENCE':
             return
 
-        labels_onehot = tf.one_hot(self.input_y, self.n_classes)
-        print 'labels_onehot', labels_onehot.get_shape()
+        self.input_y_onehot = tf.squeeze(tf.one_hot(self.input_y, self.n_classes))
+        print 'input_y_onehot', self.input_y_onehot.get_shape()
         # labels_onehot = tf.reshape(tensor = self.input_y, shape=(-1, self.n_classes))
         # labels_onehot = tf.one_hot(labels_onehot, self.n_classes)
         # y_hat_flat = tf.reshape(tensor = self.y_hat, shape=(-1, self.n_classes))
 
         self.xentropy_loss_op = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits( labels=labels_onehot, logits=self.y_hat))
+            tf.nn.softmax_cross_entropy_with_logits( labels=self.input_y_onehot, logits=self.y_hat))
 
+        ## Summaries
+        self.inpt_y_0, self.inpt_y_1 = tf.split(self.input_y_onehot, 2, axis=-1)
+        # self.inpt_y_0_summary = tf.summary.image('inpt_y_0', self.inpt_y_0)
+        # self.inpt_y_1_summary = tf.summary.image('inpt_y_1', self.inpt_y_1)
+        self.xentropy_summary = tf.summary.scalar('seg_xentropy', self.xentropy_loss_op)
         print 'xentropy loss op:', self.xentropy_loss_op.dtype
 
 
@@ -164,100 +169,126 @@ class BaseModel(object):
                 num_outputs = 32,
                 kernel_size = 5,
                 stride = 2,
-                padding = 'VALID',
+                padding = 'SAME',
                 scope = 'adv_conv1')
-            net = slim.max_pool2d(net, 2, scope='adv_pool1')
+            net = slim.max_pool2d(net, 3, 3, scope='adv_pool1')
             print '\tadv pool1', net.get_shape()
 
-            net = slim.convolution2d(net, 32, 5, 2, padding= 'VALID', scope='adv_conv2')
-            net = slim.max_pool2d(net, 2, scope='adv_pool2')
+            net = slim.convolution2d(net, 32, 5, 2, padding='SAME', scope='adv_conv2')
+            net = slim.max_pool2d(net, 3, 3, scope='adv_pool2')
             print '\tadv pool2', net.get_shape()
 
-            net = slim.convolution2d(net, 32, 5, 2, padding= 'VALID', scope='adv_conv3')
-            net = slim.max_pool2d(net, 2, scope='adv_pool3')
-            print '\tadv pool3', net.get_shape()
+            # net = slim.convolution2d(net, 32, 5, 2, padding= 'VALID', scope='adv_conv3')
+            # net = slim.max_pool2d(net, 2, scope='adv_pool3')
+            # print '\tadv pool3', net.get_shape()
 
             net = slim.flatten(net, scope='adv_flat')
             print '\tadv flat', net.get_shape()
             net = slim.fully_connected(net, 512, scope='adv_fc1')
+            print '\tadv fc', net.get_shape()
             net = slim.fully_connected(net, 2, scope='adv_output', activation_fn=None)
             print '\tadv out', net.get_shape()
         return net
 
 
+
+    """ Implements the "basic" strategy from Luc, et al """
     def _init_adversarial_loss(self):
-        self.adv_lambda = tf.constant(2.0, type=tf.float32)
-        ## input_y is [batch_size, h, w, 1] aka it's a label image
-        # assert rank(self.input_y) == 4
-        input_y_onehot = tf.one_hot(tf.squeeze(self.input_y), self.n_classes)
-        print 'input_y_onehot', input_y_onehot.get_shape(), input_y_onehot.dtype
+
+        self.adv_lambda = tf.constant(2.0)
 
         with tf.name_scope('Adversarial') as scope:
             print 'Adversarial real input'
-            self.real_adv = self._adversarial_net(input_y_onehot, reuse=False)
+            self.real_adv = self._adversarial_net(self.input_y_onehot, reuse=False)
             print 'Adversarial generated mask'
             self.fake_adv = self._adversarial_net(self.y_hat, reuse=True)
 
-        real_ex = tf.ones_like(tf.argmax(self.real_adv, 1))
-        real_ex = tf.one_hot(real_ex, 2)
+        self.real_ex = tf.ones_like(tf.argmax(self.real_adv, 1))
+        print 'real_ex', self.real_ex.get_shape()
+        self.real_ex = tf.one_hot(self.real_ex, 2)
+        print 'real_ex', self.real_ex.get_shape()
 
-        fake_ex = tf.zeros_like(tf.argmax(self.fake_adv, 1))
-        fake_ex = tf.one_hot(fake_ex, 2)
+        self.fake_ex = tf.zeros_like(tf.argmax(self.fake_adv, 1))
+        print 'fake_ex', self.fake_ex.get_shape()
+        self.fake_ex = tf.one_hot(self.fake_ex, 2)
+        print 'fake_ex', self.fake_ex.get_shape()
+
         ## Real should all be real
         self.l_bce_real = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits( labels=real_ex, logits=self.real_adv))
+            tf.nn.softmax_cross_entropy_with_logits(labels=self.real_ex, logits=self.real_adv))
 
         ## Fakes should all be fake
         self.l_bce_fake = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits( labels=fake_ex, logits=self.fake_adv))
+            tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv))
 
-        # Flip the direction for traning
+        ## Flip the direction for traning
         self.l_bce_fake_one = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits( labels=real_ex, logits=self.fake_adv))
+            tf.nn.softmax_cross_entropy_with_logits( labels=self.real_ex, logits=self.fake_adv))
 
-        print 'l_bce_real', self.l_bce_real.get_shape(), self.l_bce_real.dtype
-        print 'l_bce_fake', self.l_bce_fake.get_shape(), self.l_bce_fake.dtype
-        print 'l_bce_fake_one', self.l_bce_fake_one.get_shape(), self.l_bce_fake_one.dtype
+        self.bce_real_summary = tf.summary.scalar('l_bce_real', self.l_bce_real)
+        self.bce_fake_summary = tf.summary.scalar('l_bce_fake', self.l_bce_fake)
+        self.bce_fake_one_summary = tf.summary.scalar('l_bce_fake_one', self.l_bce_fake_one)
 
-        self.bce_real_summary = tf.summary.scalar('bce_r_loss', self.l_bce_real)
-        self.bce_fake_summary = tf.summary.scalar('bce_f_loss', self.l_bce_fake)
-        self.bce_fake_one_summary = tf.summary.scalar('bce_f_o_loss', self.l_bce_fake_one)
 
+
+    """ Initialize the training ops
+
+    creates self.train_op_list with the proper list of training ops
+
+    """
     def _init_training_ops(self):
         if self.mode == 'INFERENCE': return
-        self.optimizer = tf.train.AdamOptimizer(self.learning_rate, name='Adam')
+        self.seg_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='segAdam')
 
         if self.adversarial_training:
             print 'Using adversarial training'
-            # self.adversarial_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='advAdam')
+            ## Turns out the key is to have a second optimizer for the adversarial net
+            self.adversarial_optimizer = tf.train.AdamOptimizer(1e-2, name='advAdam')
 
             self._init_xentropy_loss()
             self._init_adversarial_loss()
 
-            # self.seg_loss_op = self.xentropy_loss_op + self.adv_lambda*self.l_bce_fake_one
-            # self.seg_train_op = self.optimizer.minimize(self.seg_loss_op)
-            # self.train_op_list = [self.seg_train_op, self.gs_increment]
+            ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) + \lambda (a(x_n, s(x_n)), 1)
+            self.seg_loss_op = self.xentropy_loss_op + self.adv_lambda*self.l_bce_fake_one
+            # self.seg_loss_op = self.xentropy_loss_op
+            self.seg_train_op = self.seg_optimizer.minimize(self.seg_loss_op)
 
-            # self.adv_loss_op = self.l_bce_real + self.l_bce_fake
-            # self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op)
-            # self.train_op_list = self.train_op_list + [self.adv_train_op]
+            ## \sum_{n=1}^{N} l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)
+            self.adv_loss_op = self.l_bce_real + self.l_bce_fake
+            self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op)
 
-            self.loss_op = self.xentropy_loss_op + self.adv_lambda*(self.l_bce_real + self.l_bce_fake)
-            self.train_op = self.optimizer.minimize(self.loss_op)
-            self.train_op_list = [self.train_op, self.gs_increment]
+            ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) - ...
+            ##      \lambda [l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)]
+            self.loss_op = self.xentropy_loss_op - self.adv_lambda*(self.l_bce_real + self.l_bce_fake)
+            # self.train_op = self.optimizer.minimize(self.loss_op)
+            # self.train_op_list = [self.train_op, self.gs_increment]
+
+            self.loss_summary = tf.summary.scalar('loss', self.loss_op)
+            self.seg_loss_summary = tf.summary.scalar('seg_loss', self.seg_loss_op)
+            self.adv_loss_summary = tf.summary.scalar('adv_loss', self.adv_loss_op)
+            self.train_op_list = [self.seg_train_op, self.adv_train_op, self.gs_increment]
 
         else:
             print 'Using standard x-entropy training'
             self._init_xentropy_loss()
             self.loss_op = self.xentropy_loss_op
-            self.train_op = self.optimizer.minimize(self.loss_op)
+            self.train_op = self.seg_optimizer.minimize(self.loss_op)
             self.train_op_list = [self.train_op, self.gs_increment]
 
+            self.loss_summary = tf.summary.scalar('loss', self.loss_op)
 
+
+    """ Initializer for summary ops
+
+    Adds some generic summary ops which we're pretty sure can always be called
+    creates self.summary_op
+
+    The previous initializers should create their own summary ops
+    And this function should be called right before init_op
+    """
     def _init_summary_ops(self):
         if self.mode == 'INFERENCE': return
 
-        self.loss_summary = tf.summary.scalar('loss', self.loss_op)
         self.gt_summary = tf.summary.image('gt', tf.cast(self.input_y, tf.float32), max_outputs=4)
         self.input_summary = tf.summary.image('img', self.input_x, max_outputs=4)
         self.output_summary = tf.summary.image('mask', self.output, max_outputs=4)
@@ -265,6 +296,13 @@ class BaseModel(object):
 
         self.summary_op = tf.summary.merge_all()
 
+
+#/END initializers
+
+
+
+
+#/START methods
     def train_step(self):
         ## Skip for inference mode
         if self.mode == 'INFERENCE':
@@ -297,7 +335,7 @@ class BaseModel(object):
         return loss[0]
 
 
-    """ v1: accept a 4D nparray as input
+    """ Accepts a 4D nparray as input
 
     NOTE inference_ops set by the child class
 

@@ -44,7 +44,7 @@ img_list = sorted(glob.glob(os.path.join(feat_dir, '*.'+image_ext)))
 inference_dir = './adv/inference'
 
 itert=0
-test_iter = 250
+test_iter = 50
 batch_size = 64
 crop_size = 256
 
