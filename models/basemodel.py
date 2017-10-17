@@ -170,11 +170,12 @@ class BaseModel(object):
                 kernel_size = 5,
                 stride = 2,
                 padding = 'SAME',
-                scope = 'adv_conv1')
+                scope = 'adv_conv1',
+                reuse = reuse)
             net = slim.max_pool2d(net, 3, 3, scope='adv_pool1')
             print '\tadv pool1', net.get_shape()
 
-            net = slim.convolution2d(net, 32, 5, 2, padding='SAME', scope='adv_conv2')
+            net = slim.convolution2d(net, 32, 5, 2, padding='SAME', scope='adv_conv2', reuse=reuse)
             net = slim.max_pool2d(net, 3, 3, scope='adv_pool2')
             print '\tadv pool2', net.get_shape()
 
@@ -184,9 +185,9 @@ class BaseModel(object):
 
             net = slim.flatten(net, scope='adv_flat')
             print '\tadv flat', net.get_shape()
-            net = slim.fully_connected(net, 512, scope='adv_fc1')
+            net = slim.fully_connected(net, 512, scope='adv_fc1', reuse=reuse)
             print '\tadv fc', net.get_shape()
-            net = slim.fully_connected(net, 2, scope='adv_output', activation_fn=None)
+            net = slim.fully_connected(net, 2, scope='adv_output', activation_fn=None, reuse=reuse)
             print '\tadv out', net.get_shape()
         return net
 
@@ -195,7 +196,7 @@ class BaseModel(object):
     """ Implements the "basic" strategy from Luc, et al """
     def _init_adversarial_loss(self):
 
-        self.adv_lambda = tf.constant(2.0)
+        self.adv_lambda = tf.constant(1.5)
 
         with tf.name_scope('Adversarial') as scope:
             print 'Adversarial real input'
@@ -203,15 +204,9 @@ class BaseModel(object):
             print 'Adversarial generated mask'
             self.fake_adv = self._adversarial_net(self.y_hat, reuse=True)
 
-        self.real_ex = tf.ones_like(tf.argmax(self.real_adv, 1))
-        print 'real_ex', self.real_ex.get_shape()
-        self.real_ex = tf.one_hot(self.real_ex, 2)
-        print 'real_ex', self.real_ex.get_shape()
-
-        self.fake_ex = tf.zeros_like(tf.argmax(self.fake_adv, 1))
-        print 'fake_ex', self.fake_ex.get_shape()
-        self.fake_ex = tf.one_hot(self.fake_ex, 2)
-        print 'fake_ex', self.fake_ex.get_shape()
+        ## Trainig objectives for real and fake images
+        self.real_ex = tf.one_hot(tf.ones_like(tf.argmax(self.real_adv, 1)), 2)
+        self.fake_ex = tf.one_hot(tf.zeros_like(tf.argmax(self.fake_adv, 1)), 2)
 
         ## Real should all be real
         self.l_bce_real = tf.reduce_mean(
@@ -222,6 +217,7 @@ class BaseModel(object):
             tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv))
 
         ## Flip the direction for traning
+        ## "maximize the prob. that the fake images are called real"
         self.l_bce_fake_one = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits( labels=self.real_ex, logits=self.fake_adv))
 
@@ -249,24 +245,26 @@ class BaseModel(object):
             self._init_adversarial_loss()
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) + \lambda (a(x_n, s(x_n)), 1)
+            ## --------- or ----------
+            ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) - \lambda (a(x_n, s(x_n)), 0)
             self.seg_loss_op = self.xentropy_loss_op + self.adv_lambda*self.l_bce_fake_one
-            # self.seg_loss_op = self.xentropy_loss_op
+            # self.seg_loss_op = self.xentropy_loss_op - self.adv_lambda*self.l_bce_fake
             self.seg_train_op = self.seg_optimizer.minimize(self.seg_loss_op)
 
             ## \sum_{n=1}^{N} l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)
             self.adv_loss_op = self.l_bce_real + self.l_bce_fake
             self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op)
+            # self.adv_train_op = self.seg_optimizer.minimize(self.adv_loss_op)
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) - ...
             ##      \lambda [l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)]
             self.loss_op = self.xentropy_loss_op - self.adv_lambda*(self.l_bce_real + self.l_bce_fake)
-            # self.train_op = self.optimizer.minimize(self.loss_op)
-            # self.train_op_list = [self.train_op, self.gs_increment]
 
             self.loss_summary = tf.summary.scalar('loss', self.loss_op)
             self.seg_loss_summary = tf.summary.scalar('seg_loss', self.seg_loss_op)
             self.adv_loss_summary = tf.summary.scalar('adv_loss', self.adv_loss_op)
             self.train_op_list = [self.seg_train_op, self.adv_train_op, self.gs_increment]
+            # self.train_op_list = [self.train_op, self.gs_increment]
 
         else:
             print 'Using standard x-entropy training'

@@ -61,7 +61,10 @@ with tf.Graph().as_default():
             batch_size = batch_size,
             crop_size  = crop_size,
             ratio      = 0.5,
-            capacity   = 5000)
+            capacity   = 7500,
+            min_holding= 1250,
+            threads    = 8)
+
 
         network = DeconvModel(
             sess = sess,

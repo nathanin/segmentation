@@ -51,15 +51,16 @@ class ImageMaskDataSet(object):
                  image_names = None, ## /Unused args. plan to auto-split train-val
                  mask_names = None,
                  split_train_val = False, ## /end unused args
-                 n_classes = 2,
-                 batch_size= 96,
-                 crop_size =256,
-                 ratio     = 1.0,
-                 capacity  =5000,
-                 image_ext ='jpg',
-                 mask_ext  ='png',
-                 seed      =5555,
-                 threads   =6):
+                 n_classes  = 2,
+                 batch_size = 96,
+                 crop_size  = 256,
+                 ratio      = 1.0,
+                 capacity   = 5000,
+                 image_ext  = 'jpg',
+                 mask_ext   = 'png',
+                 seed       = 5555,
+                 threads    = 4,
+                 min_holding= 1250):
 
 
         self.image_names = tf.convert_to_tensor(sorted(glob.glob(
@@ -78,6 +79,9 @@ class ImageMaskDataSet(object):
         self.n_classes = n_classes
         self.threads = threads
         self.image_ext = image_ext
+        self.min_holding = min_holding
+
+        self.preprocess_fn = self._preprocessing
 
         ## Set random seed to shuffle the same way..
         print 'Setting up image, mask queues'
@@ -110,19 +114,18 @@ class ImageMaskDataSet(object):
             # mask_op = tf.image.decode_jpeg(mask_file, ratio=self.ratio)
             mask_op = tf.image.decode_image(mask_file)
 
-            image_op, mask_op = self.preprocessing(image_op, mask_op)
+            image_op, mask_op = self.preprocess_fn(image_op, mask_op)
             image_op, mask_op = tf.train.shuffle_batch([image_op, mask_op],
                 batch_size = self.batch_size,
                 capacity   = self.capacity,
-                min_after_dequeue = 100,
+                min_after_dequeue = self.min_holding,
                 num_threads = self.threads,
                 name = 'Dataset')
 
             self.image_op = image_op
             self.mask_op = mask_op
 
-
-    def preprocessing(self, image, mask):
+    def _preprocessing(self, image, mask):
         ## TODO: setup preprocessing via input_fn
         image = tf.divide(image, 255)
         mask  = tf.divide(mask, 255)
@@ -138,12 +141,80 @@ class ImageMaskDataSet(object):
 
         return image, mask
 
+
+
     def get_batch(self):
         image, mask = self.sess.run([self.image_op, self.mask_op])
         return image, mask
 #/end ImageMaskDataSet
 
 
-"""
-end file
-"""
+
+
+
+""" Same as ImageMaskDataSet except images only """
+class ImageDataSet(object):
+    def __init__(self,
+                 image_dir,
+                 mask_dir,
+                 n_classes  = 2,
+                 batch_size = 96,
+                 crop_size  = 256,
+                 ratio      = 1.0,
+                 capacity   = 2000,
+                 image_ext  = 'jpg',
+                 seed       = 5555,
+                 threads    = 4,
+                 min_holding= 250):
+
+        self.image_names = tf.convert_to_tensor(sorted(glob.glob(
+        os.path.join(image_dir, '*.'+image_ext) )))
+        print '{} image files starting with {}'.format(self.image_names.shape, self.image_names[0])
+
+        self.batch_size = batch_size
+        self.crop_size  = crop_size
+        self.ratio = ratio
+        self.capacity  = capacity
+        self.n_classes = n_classes
+        self.threads = threads
+        self.image_ext = image_ext
+        self.min_holding = min_holding
+
+        self.preprocess_fn = self._preprocessing
+
+        self.feature_queue = tf.train.string_input_producer(
+            self.image_names,
+            shuffle=True,
+            seed=seed )
+
+        self.image_reader = tf.WholeFileReader()
+        self._setup_image_mask_ops()
+
+    def set_tf_sess(self, sess):
+        self.sess = sess
+
+    def _setup_image_mask_ops(self):
+        print 'Setting up image and mask retrieval ops'
+        with tf.name_scope('ImageDataSet'):
+            image_key, image_file = self.image_reader.read(self.feature_queue)
+            image_op = tf.image.decode_image(image_file)
+
+            image_op = self.preprocess_fn(image_op)
+            image_op = tf.train.shuffle_batch(image_op,
+                batch_size = self.batch_size,
+                capacity   = self.capacity,
+                min_after_dequeue = self.min_holding,
+                num_threads = self.threads,
+                name = 'Dataset')
+
+            self.image_op = image_op
+
+    def _preprocessing(self, image):
+        ## TODO: setup preprocessing via input_fn
+        image = tf.divide(image, 255)
+
+        ## Perform a random crop
+        image = tf.random_crop(image,
+            [self.crop_size, self.crop_size, 4])
+
+        return image
