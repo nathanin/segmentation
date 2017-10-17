@@ -129,6 +129,7 @@ class BaseModel(object):
             return
 
         labels_onehot = tf.one_hot(self.input_y, self.n_classes)
+        print 'labels_onehot', labels_onehot.get_shape()
         # labels_onehot = tf.reshape(tensor = self.input_y, shape=(-1, self.n_classes))
         # labels_onehot = tf.one_hot(labels_onehot, self.n_classes)
         # y_hat_flat = tf.reshape(tensor = self.y_hat, shape=(-1, self.n_classes))
@@ -191,10 +192,11 @@ class BaseModel(object):
         input_y_onehot = tf.one_hot(tf.squeeze(self.input_y), self.n_classes)
         print 'input_y_onehot', input_y_onehot.get_shape(), input_y_onehot.dtype
 
-        print 'Adversarial real input'
-        self.real_adv = self._adversarial_net(input_y_onehot, reuse=False)
-        print 'Adversarial generated mask'
-        self.fake_adv = self._adversarial_net(self.y_hat, reuse=True)
+        with tf.name_scope('Adversarial') as scope:
+            print 'Adversarial real input'
+            self.real_adv = self._adversarial_net(input_y_onehot, reuse=False)
+            print 'Adversarial generated mask'
+            self.fake_adv = self._adversarial_net(self.y_hat, reuse=True)
 
         real_ex = tf.ones_like(tf.argmax(self.real_adv, 1))
         real_ex = tf.one_hot(real_ex, 2)

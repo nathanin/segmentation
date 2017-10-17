@@ -50,17 +50,18 @@ class DeconvModel(BaseModel):
 
         ## Custom things for this model
         self.n_kernels = n_kernels
-        with tf.name_scope('ConvDeconv'):
+        with tf.name_scope('ConvDeconv') as scope:
             self.y_hat = self.model()
 
-        with tf.name_scope('output'):
+        with tf.name_scope('output') as scope:
             self.y_hat_sig = tf.nn.sigmoid(self.y_hat)
             self.output = tf.expand_dims(tf.argmax(self.y_hat_sig, 3), -1)
             self.output = tf.cast(self.output, tf.float32)
         self.inference_ops = [self.y_hat_sig, self.output]
 
         ## Generics
-        self._init_training_ops()
+        with tf.name_scope('loss') as scope:
+            self._init_training_ops()
 
         self._init_summary_ops()
 
@@ -73,36 +74,36 @@ class DeconvModel(BaseModel):
 
     """ Implements some generic convolution / deconvolution model """
     def model(self):
-        with tf.name_scope('Encoder') as scope:
-            self.batch_size = self.input_x.get_shape()[0]
-            x_dim = self.input_x.get_shape().as_list()[1]
-            y_dim = self.input_x.get_shape().as_list()[2]
-            net = slim.convolution2d(self.input_x,
-                num_outputs = self.n_kernels,
-                kernel_size = 5,
-                stride = 2,
-                padding = 'SAME',
-                scope = 'conv1')
-            net = slim.convolution2d(net, self.n_kernels,  5, 2, padding='VALID', scope='conv2')
-            net = slim.max_pool2d(net, 2, scope='pool2')
-            net = slim.convolution2d(net, self.n_kernels, 5, 2, padding='VALID', scope='conv3')
-            if self.bayesian:
-                net = slim.dropout(net, scope='drop1')
+        # with tf.name_scope('Encoder') as scope:
+        self.batch_size = self.input_x.get_shape()[0]
+        x_dim = self.input_x.get_shape().as_list()[1]
+        y_dim = self.input_x.get_shape().as_list()[2]
+        net = slim.convolution2d(self.input_x,
+            num_outputs = self.n_kernels,
+            kernel_size = 5,
+            stride = 2,
+            padding = 'SAME',
+            scope = 'conv1')
+        net = slim.convolution2d(net, self.n_kernels,  5, 2, padding='VALID', scope='conv2')
+        net = slim.max_pool2d(net, 2, scope='pool2')
+        net = slim.convolution2d(net, self.n_kernels, 5, 2, padding='VALID', scope='conv3')
+        if self.bayesian:
+            net = slim.dropout(net, scope='drop1')
 
-        with tf.name_scope('Decoder') as scope:
-            net = slim.convolution2d_transpose(net, self.n_kernels, 3, 2, padding='VALID', scope='deconv1')
-            net = slim.convolution2d_transpose(net, self.n_kernels, 7, 3, padding='VALID', scope='deconv2')
-            ## Set to 1/2 input size for 2x upconv
-            net = tf.image.resize_bilinear(net, [x_dim//2, y_dim//2])
-            net = slim.convolution2d_transpose(net, self.n_classes, 2, 2,
-                padding='SAME', scope='deonv3', activation_fn=None)
-            if self.bayesian:
-                net = slim.dropout(net, scope='drop2')
+        # with tf.name_scope('Decoder') as scope:
+        net = slim.convolution2d_transpose(net, self.n_kernels, 3, 2, padding='VALID', scope='deconv1')
+        net = slim.convolution2d_transpose(net, self.n_kernels, 7, 3, padding='VALID', scope='deconv2')
+        ## Set to 1/2 input size for 2x upconv
+        net = tf.image.resize_bilinear(net, [x_dim//2, y_dim//2])
+        net = slim.convolution2d_transpose(net, self.n_classes, 2, 2,
+            padding='SAME', scope='deonv3', activation_fn=None)
+        if self.bayesian:
+            net = slim.dropout(net, scope='drop2')
 
-            ## Force to be the same size as input, if it's off by one
-            net = tf.image.resize_image_with_crop_or_pad(net, x_dim, y_dim)
+        ## Force to be the same size as input, if it's off by one
+        net = tf.image.resize_image_with_crop_or_pad(net, x_dim, y_dim)
 
-            ## Debugging
-            # net = tf.Print(net, [net, 'Model processing'])
+        ## Debugging
+        # net = tf.Print(net, [net, 'Model processing'])
 
         return net
