@@ -11,11 +11,12 @@ Figure 1. The competing standards conundrum.
 
 ## Models
 - Generic convolution / deconvolution model
-- FCN-{32, 16, 8}s
-- U-Net
+- FCN-{32, 16, 8}s ([Long et al, 2014](https://people.eecs.berkeley.edu/~jonlong/long_shelhamer_fcn.pdf))
+    - (there's a few versions of this paper between 2014-2016. 2014 has ~2k citations so that's the link.)
+- U-Net ([Ronneberger et al, 2015](https://arxiv.org/pdf/1505.04597.pdf))
+- Optional adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
 
 ## Structure
-
 Big assumption (my use case): training data and masks are in two folders, named alike, and exist as individual images.
 Support for some more advanced data structures is probably plug-and-play.
 But there is threading for the I/O and potential for on-the-fly augmentation, so that's still a plus.
@@ -45,6 +46,17 @@ with tf.Session() as sess:
     inference = model.infer(image_tensor)
 ```
 
+Data structure example:
+```
+data/
+  features/
+    000.jpg
+    001.jpg
+
+  labels/
+    000.png
+    001.png
+```
 
 ## Features
 - Hide all the ugly stuff in a `BaseModel` class with functions and hyperparameters for training, saving, tensorboard and inference

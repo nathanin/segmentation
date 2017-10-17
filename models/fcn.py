@@ -108,30 +108,17 @@ class FCNModel(BaseModel):
             padding = 'SAME',
             scope = 'conv1')
         net = slim.max_pool2d(net, 2, scope='pool1')
-        print 'pool1', net.get_shape()
-
         net = slim.convolution2d(net, self.n_kernels*2, 3, 1, padding='SAME', scope='conv2')
         net = slim.max_pool2d(net, 2, scope='pool2')
-        print 'pool2', net.get_shape()
-
         net = slim.convolution2d(net, self.n_kernels*4, 3, 1, padding='SAME', scope='conv3')
         self.pool3 = slim.max_pool2d(net, 2, scope='pool3')
-        print 'pool3', self.pool3.get_shape()
-
         net = slim.convolution2d(self.pool3, self.n_kernels*8, 3, 1, padding='SAME', scope='conv4')
         self.pool4 = slim.max_pool2d(net, 2, scope='pool4')
-        print 'pool4', self.pool4.get_shape()
-
         net = slim.convolution2d(self.pool4, self.n_kernels*8, 3, 1, padding='SAME', scope='conv5')
         self.pool5 = slim.max_pool2d(net, 2, scope='pool5')
-        print 'pool5', self.pool5.get_shape()
-
         net = slim.convolution2d(self.pool5, self.n_kernels*32, 1, 1, padding='SAME', scope='conv6')
         net = slim.convolution2d(net, self.n_kernels*32, 1, 1, padding='SAME', scope='conv7')
-        print 'FC', net.get_shape()
-
         net = slim.convolution2d(net, self.n_classes, 1, 1, padding='SAME', scope='conv_fr')
-        print 'FC_fr', net.get_shape()
 
         return net
 
@@ -209,5 +196,5 @@ class FCNModel(BaseModel):
             [batch_size, h*8, w*8, self.n_classes], [1,8,8,1]) ## 4 * 16 = 64
         ## Force to be the same size as input
         upscore = tf.image.resize_image_with_crop_or_pad(upscore, self.x_dim, self.y_dim)
-        print 'fcn16s upscore', upscore.get_shape()
+        print 'fcn8s upscore', upscore.get_shape()
         return upscore

@@ -20,7 +20,10 @@ class DeconvModel(BaseModel):
         input_channel = 3,
         learning_rate = 1e-4,
         load_snapshot = None,
-        load_snapshot_from = None,):
+        load_snapshot_from = None,
+        n_kernels = 16,
+        adversarial_training = False):
+
 
         ## TODO: Check args
 
@@ -36,7 +39,8 @@ class DeconvModel(BaseModel):
             input_channel=input_channel,
             load_snapshot=load_snapshot,
             learning_rate=learning_rate,
-            load_snapshot_from=load_snapshot_from)
+            load_snapshot_from=load_snapshot_from,
+            adversarial_training=adversarial_training)
 
         self.model_name = 'deconvolution'
         print 'Setting up deconvolution model'
@@ -45,7 +49,7 @@ class DeconvModel(BaseModel):
         self._init_input()
 
         ## Custom things for this model
-        self.n_kernels = 16
+        self.n_kernels = n_kernels
         with tf.name_scope('ConvDeconv'):
             self.y_hat = self.model()
 
@@ -57,21 +61,20 @@ class DeconvModel(BaseModel):
 
         ## Generics
         self._init_training_ops()
+
         self._init_summary_ops()
 
         self.init_op = tf.global_variables_initializer()
-
         self.sess.run([self.init_op])
 
         ## Saver things; TODO add logic that skips the dataset load if we restore
         self._init_saver(self.model_name)
 
-        # self.sess.run([self.init_op])
-
 
     """ Implements some generic convolution / deconvolution model """
     def model(self):
         with tf.name_scope('Encoder') as scope:
+            self.batch_size = self.input_x.get_shape()[0]
             x_dim = self.input_x.get_shape().as_list()[1]
             y_dim = self.input_x.get_shape().as_list()[2]
             net = slim.convolution2d(self.input_x,

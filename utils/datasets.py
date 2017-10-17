@@ -30,10 +30,12 @@ def load_images(paths, batchsize, crop_size):
     ## Also treat images like they're the same size
     tensor = [np.expand_dims(x,0) for x in tensor]
     tensor = np.concatenate(tensor, 0).astype(np.float32)
-    tensor /= tensor.max()
+    ## TODO: Logic for float-valued image
+    # tensor /= tensor.max()
+    tensor /= 255.0
 
-    print 'Loaded {} tensor : {}, {}\t{}'.format(tensor.shape,
-        tensor.min(), tensor.max(), tensor.dtype)
+    # print 'Loaded {} tensor : {}, {}\t{}'.format(tensor.shape,
+    #     tensor.min(), tensor.max(), tensor.dtype)
     return tensor
 
 """
@@ -57,7 +59,7 @@ class ImageMaskDataSet(object):
                  image_ext ='jpg',
                  mask_ext  ='png',
                  seed      =5555,
-                 threads   =2):
+                 threads   =6):
 
 
         self.image_names = tf.convert_to_tensor(sorted(glob.glob(

@@ -32,16 +32,22 @@ from datasets import ImageMaskDataSet, load_images
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
-itert=1
-feat_dir = '/Users/nathaning/_original_data/nuclei/pca/img'
-mask_dir = '/Users/nathaning/_original_data/nuclei/pca/mask'
+# feat_dir = '/Users/nathaning/_original_data/nuclei/pca/img'
+# mask_dir = '/Users/nathaning/_original_data/nuclei/pca/mask'
+# image_ext = 'png'
 
-feat_dir = '../data/img'
-mask_dir = '../data/mask'
-image_ext = 'png'
+feat_dir = '../../data/feature'
+mask_dir = '../../data/label'
+image_ext = 'jpg'
 
 img_list = sorted(glob.glob(os.path.join(feat_dir, '*.'+image_ext)))
-inference_dir = './fcn/inference'
+inference_dir = './adv/inference'
+
+itert=0
+test_iter = 250
+batch_size = 64
+crop_size = 256
+
 
 with tf.Graph().as_default():
     with tf.Session(config=config) as sess:
@@ -52,19 +58,21 @@ with tf.Graph().as_default():
         dataset = ImageMaskDataSet(feat_dir, mask_dir,
             image_ext  = image_ext,
             n_classes  = 2,
-            batch_size = 8,
-            crop_size  = 128,
+            batch_size = batch_size,
+            crop_size  = crop_size,
             ratio      = 0.5,
-            capacity   = 1000)
+            capacity   = 5000)
 
-        # network = DeconvModel(
-        #     sess = sess,
-        #     dataset = dataset,
-        #     n_classes = 2,
-        #     save_dir = './fcn/snapshots',
-        #     log_dir = './fcn/logs/{}'.format(itert),
-        #     load_snapshot = True,
-        #     mode = 'TRAINING')
+        network = DeconvModel(
+            sess = sess,
+            dataset = dataset,
+            n_classes = 2,
+            save_dir = './adv/snapshots',
+            log_dir = './adv/logs/{}'.format(itert),
+            load_snapshot = True,
+            learning_rate = 1e-4,
+            n_kernels = 32,
+            adversarial_training = True)
 
         # network = UNetModel(
         #     sess = sess,
@@ -75,16 +83,16 @@ with tf.Graph().as_default():
         #     load_snapshot = True,
         #     mode = 'TRAINING')
 
-        network = FCNModel(
-            sess = sess,
-            dataset = dataset,
-            n_classes = 2,
-            learning_rate = 1e-4,
-            fcn_type = '8s',
-            save_dir = './fcn/snapshots',
-            log_dir = './fcn/logs/{}'.format(itert),
-            load_snapshot = True,
-            mode = 'TRAINING')
+        # network = FCNModel(
+        #     sess = sess,
+        #     dataset = dataset,
+        #     n_classes = 2,
+        #     learning_rate = 1e-4,
+        #     fcn_type = '8s',
+        #     save_dir = './fcn/snapshots',
+        #     log_dir = './fcn/logs/{}'.format(itert),
+        #     load_snapshot = True,
+        #     mode = 'TRAINING')
 
         ## Has to come after init_op ???
         coord = tf.train.Coordinator()
@@ -94,11 +102,11 @@ with tf.Graph().as_default():
         tstart = time.time()
         for _ in range(50):
             tloop = time.time()
-            for _ in range(50):
+            for k in range(500):
                 network.train_step()
-
-            print 'Testing... loss={:3.5f}\tTime:{}'.format(network.test(),
-                time.time()-tloop)
+                if k % test_iter == 0:
+                    print 'Testing... loss={:3.5f}\tTime:{}'.format(network.test(),
+                        time.time()-tloop)
 
             network.snapshot()
 
@@ -111,12 +119,8 @@ with tf.Graph().as_default():
 
             .......... was INFERENCE mode unnecessary ???
             """
-            img_tensor = load_images(img_list, 8, 128)
+            img_tensor = load_images(img_list, batch_size, crop_size)
             output = network.infer(img_tensor)
-
-            print len(output)
-            print output[0].shape
-            print output[1].shape
 
             for k in range(output[0].shape[0]):
                 img = np.squeeze(output[0][k,:,:,1])

@@ -3,3 +3,5 @@ deconv/
 unet/
 fcn/
 adversarial/
+examples/adv/
+examples/deconv/
