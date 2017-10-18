@@ -7,6 +7,23 @@ slim = tf.contrib.slim
 sys.path.insert(0, '.')
 from basemodel import BaseModel
 
+""" DeconvModel class
+
+It should implement a method model()
+
+Then, call model() that sets the attribute y_hat:
+
+y_hat = model(...)
+
+Model should have method for reuse
+def model(input, reuse=False):
+    ...
+
+
+Also: there has to be a better option for message passing arguments
+
+"""
+
 class DeconvModel(BaseModel):
     def __init__(self,
         sess = None,
@@ -23,6 +40,7 @@ class DeconvModel(BaseModel):
         load_snapshot = None,
         load_snapshot_from = None,
         n_kernels = 32,
+        autoencoder = False,
         adversarial_training = False):
 
 
@@ -37,6 +55,7 @@ class DeconvModel(BaseModel):
             save_dir=save_dir,
             n_classes=n_classes,
             input_dims=input_dims,
+            autoencoder=autoencoder,
             test_dataset=test_dataset,
             input_channel=input_channel,
             load_snapshot=load_snapshot,
@@ -99,18 +118,27 @@ class DeconvModel(BaseModel):
         if self.bayesian:
             net = slim.dropout(net, scope='drop1')
 
+        net = slim.convolution2d(net, self.n_kernels*8, 3, 1, padding='VALID', scope='conv4',reuse=reuse)
+        print 'conv4', net.get_shape()
+        if self.bayesian:
+            net = slim.dropout(net, scope='drop1')
+
         net = slim.convolution2d_transpose(net, self.n_kernels*2, 3, 2, padding='VALID', scope='deconv1', reuse=reuse)
         if self.bayesian:
             net = slim.dropout(net, scope='drop2')
+            
         net = slim.convolution2d_transpose(net, self.n_kernels, 7, 3, padding='VALID', scope='deconv2', reuse=reuse)
         ## Set to 1/2 input size for 2x upconv
         net = tf.image.resize_bilinear(net, [x_dim//2, y_dim//2])
         net = slim.convolution2d_transpose(net, self.n_classes, 2, 2,
-            padding='SAME', scope='deconv3', activation_fn=None, reuse=reuse)
+            padding='SAME', scope='deconv3', reuse=reuse)#, activation_fn=None)
         print 'deconv3', net.get_shape()
 
         ## Force to be the same size as input, if it's off by one
         net = tf.image.resize_image_with_crop_or_pad(net, x_dim, y_dim)
         print 'force_resize', net.get_shape()
+
+        net = slim.convolution2d(net, self.n_classes, 5, 1, padding='SAME', scope='conv_out',
+            activation_fn=None, reuse=reuse)
 
         return net

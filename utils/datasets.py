@@ -11,15 +11,20 @@ def bias_variable(shape, name=None):
     initial = tf.constant(0., shape=shape)
     return tf.Variable(initial, name=name)
 
+
+
+
 """ return 4-D tensor with shape = (batchsize, h, w, channels) """
 def load_images(paths, batchsize, crop_size):
     ## use numpy
     tensor = []
     imglist = np.random.choice(paths, batchsize)
     for imgp in imglist:
+        # print imgp
         tensor.append(cv2.imread(imgp)[:,:,::-1]) ## BGR --> RGB
 
     ## Apply a crop
+    ## Can't just do it down the stack in case there are repeats
     fx = lambda ix: np.random.randint(ix.shape[0]-crop_size)
     fy = lambda ix: np.random.randint(ix.shape[1]-crop_size)
     for k in range(batchsize):
@@ -37,6 +42,10 @@ def load_images(paths, batchsize, crop_size):
     # print 'Loaded {} tensor : {}, {}\t{}'.format(tensor.shape,
     #     tensor.min(), tensor.max(), tensor.dtype)
     return tensor
+
+
+
+
 
 """
 Implements a threaded queue for reading images from disk given filenames
@@ -190,8 +199,11 @@ class ImageDataSet(object):
         self.image_reader = tf.WholeFileReader()
         self._setup_image_mask_ops()
 
+
+
     def set_tf_sess(self, sess):
         self.sess = sess
+
 
     def _setup_image_mask_ops(self):
         print 'Setting up image and mask retrieval ops'
@@ -208,6 +220,7 @@ class ImageDataSet(object):
                 name = 'Dataset')
 
             self.image_op = image_op
+
 
     def _preprocessing(self, image):
         ## TODO: setup preprocessing via input_fn
