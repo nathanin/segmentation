@@ -77,6 +77,7 @@ data/
 - Tensorboard only shows me the input pipeline? Where is my model?
 - Input pipeline could & should & must be faster
 - Logging is clunky; iterative experimentation is clunky
+- Small bug: test runs every time summary_op is run. How to split up a different summary?
 
 #### Comments, feedback, "this is just a bad version of X other repo":
 Use the issues section (gotta get that sweet activity).
