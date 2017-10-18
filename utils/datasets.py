@@ -120,10 +120,10 @@ class ImageMaskDataSet(object):
                 capacity   = self.capacity,
                 min_after_dequeue = self.min_holding,
                 num_threads = self.threads,
-                name = 'Dataset')
+                name = 'Dataset',)
 
             self.image_op = image_op
-            self.mask_op = mask_op
+            self.mask_op = tf.cast(mask_op, tf.uint8)
 
     def _preprocessing(self, image, mask):
         ## TODO: setup preprocessing via input_fn

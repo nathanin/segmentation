@@ -5,3 +5,5 @@ fcn/
 adversarial/
 examples/adv/
 examples/deconv/
+examples/fcn/
+examples/unet/

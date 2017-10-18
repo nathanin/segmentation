@@ -3,7 +3,7 @@
 I've noticed that most implementations include just one network architecture.
 They're usually very specialized and there are considerable code gaps between data --> model --> application.
 So what do I do?
-I write yet another solution (Fig. 1)
+I write another solution (Fig. 1)
 
 ![https://imgs.xkcd.com/comics/standards.png](https://imgs.xkcd.com/comics/standards.png)
 
@@ -12,9 +12,16 @@ Figure 1. The competing standards conundrum.
 ## Models
 - Generic convolution / deconvolution model
 - FCN-{32, 16, 8}s ([Long et al, 2014](https://people.eecs.berkeley.edu/~jonlong/long_shelhamer_fcn.pdf))
-    - (there's a few versions of this paper between 2014-2016. 2014 has ~2k citations so that's the link.)
 - U-Net ([Ronneberger et al, 2015](https://arxiv.org/pdf/1505.04597.pdf))
-- Optional adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
+- Optional: adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
+- !! SOON NOT YET SOON !! Optional: Bayesian mode for all models ([Kendall & Gal, 2017](https://arxiv.org/pdf/1703.04977.pdf))
+
+<!-- @article{kendall2017uncertainties,
+  title={What Uncertainties Do We Need in Bayesian Deep Learning for Computer Vision?},
+  author={Kendall, Alex and Gal, Yarin},
+  journal={arXiv preprint arXiv:1703.04977},
+  year={2017}
+} -->
 
 ## Structure
 Big assumption (my use case): training data and masks are in two folders, named alike, and exist as individual images.
@@ -58,12 +65,19 @@ data/
     001.png
 ```
 
-## Features
-- Hide all the ugly stuff in a `BaseModel` class with functions and hyperparameters for training, saving, tensorboard and inference
+### Notes
+- All the ugly stuff is hidden in the `BaseModel` class with functions and hyperparameters for training, saving, tensorboard and inference
 - To implement a new model, copy + paste an existing `__init__` function, and implement the `model()` method
-- Should be robust to input sizes (untested)
+- Option to have a separate 'validation' set feed the validation ops. That part is super hacky. But I mean if it's hacky and it works it aint hacky.
+<!-- - See my [other project](https://github.com/nathanin/histo-seg) for a potential use case outside of self-driving cars and benchmarking datasets. -->
+- Adversarial training is pretty unstable, so I set a low learning rate for the adversarial net. Also super necessary to disable gradient backwards pass through the segmentation optimizer. You don't want the adversary net to be trained with that one-sided objective which is actually the opposite of what you really want.
 
 
-#### Comments & Feedback
-Please use the issues section to point where we can improve this thing.
-For other correspondence, email directly <ing.nathany@gmail.com>
+### Known things that don't work right
+- Tensorboard only shows me the input pipeline? Where is my model?
+- Input pipeline could & should & must be faster
+- Logging is clunky; iterative experimentation is clunky
+
+#### Comments, feedback, "this is just a bad version of X other repo":
+Use the issues section (gotta get that sweet activity).
+For other correspondence, please email directly (<ing.nathany@gmail.com>).

@@ -32,9 +32,12 @@ class UNetModel(BaseModel):
         input_dims = 512,
         mode = 'TRAINING',
         input_channel = 3,
+        test_dataset = None,
         learning_rate = 1e-4,
         load_snapshot = None,
-        load_snapshot_from = None):
+        load_snapshot_from = None,
+        n_kernels = 32,
+        adversarial_training = False):
 
         ## TODO: Check args
 
@@ -43,25 +46,31 @@ class UNetModel(BaseModel):
             mode=mode,
             log_dir=log_dir,
             dataset=dataset,
-            save_dir=save_dir,
             bayesian=bayesian,
+            save_dir=save_dir,
             n_classes=n_classes,
             input_dims=input_dims,
+            test_dataset=test_dataset,
             input_channel=input_channel,
             load_snapshot=load_snapshot,
             learning_rate=learning_rate,
-            load_snapshot_from=load_snapshot_from)
+            load_snapshot_from=load_snapshot_from,
+            adversarial_training=adversarial_training)
 
         self.model_name = 'unet'
+        self.IN_OUT_CROP = True
         print 'Setting up UNet model'
 
         ## Ops
         self._init_input()
 
         ## Custom things for this model
-        self.n_filters = 16
+        self.n_kernels = n_kernels
         with tf.name_scope('UNet'):
-            self.y_hat = self.model()
+            self.y_hat = self.model(self.input_x, reuse=False)
+            target = self.y_hat.get_shape().as_list()[1]
+            self.input_y = tf.image.resize_image_with_crop_or_pad(self.input_y, target, target)
+            print 'crop_input_y', self.input_y.get_shape()
 
         with tf.name_scope('output'):
             self.y_hat_sig = tf.nn.sigmoid(self.y_hat)
@@ -70,11 +79,15 @@ class UNetModel(BaseModel):
         self.inference_ops = [self.y_hat_sig, self.output]
 
         ## Generics
-        self._init_training_ops()
+        with tf.name_scope('loss') as scope:
+            self._init_training_ops()
+
+        with tf.name_scope('testing') as scope:
+            self._init_testing()
+
         self._init_summary_ops()
 
         self.init_op = tf.global_variables_initializer()
-
         self.sess.run([self.init_op])
 
         ## Saver things; TODO add logic that skips the dataset load if we restore
@@ -93,64 +106,65 @@ class UNetModel(BaseModel):
         return cropped_tensor
 
 
-    def model(self):
+    def model(self, input_op, reuse=False):
         with tf.name_scope('Unet') as scope:
-            net = slim.convolution2d(self.input_x,
-                num_outputs = self.n_filters,
+            net = slim.convolution2d(input_op,
+                num_outputs = self.n_kernels,
                 kernel_size = 3,
                 stride = 1,
                 padding = 'VALID',
-                scope = 'conv1_1')
-            net1_2 = slim.convolution2d(net, self.n_filters, 3, 1, padding='VALID', scope='conv1_2')
+                scope = 'conv1_1',
+                reuse=reuse)
+            net1_2 = slim.convolution2d(net, self.n_kernels, 3, 1, padding='VALID', scope='conv1_2', reuse=reuse)
 
             net2_0 = slim.max_pool2d(net, 2, scope='pool1')
-            net2_1 = slim.convolution2d(net2_0, self.n_filters*2, 3, 1, padding='VALID', scope='conv2_1')
-            net2_2 = slim.convolution2d(net2_1, self.n_filters*2, 3, 1, padding='VALID', scope='conv2_2')
+            net2_1 = slim.convolution2d(net2_0, self.n_kernels*2, 3, 1, padding='VALID', scope='conv2_1', reuse=reuse)
+            net2_2 = slim.convolution2d(net2_1, self.n_kernels*2, 3, 1, padding='VALID', scope='conv2_2', reuse=reuse)
 
             net3_0 = slim.max_pool2d(net2_2, 2, scope='pool2')
-            net3_1 = slim.convolution2d(net3_0, self.n_filters*4, 3, 1, padding='VALID', scope='conv3_1')
-            net3_2 = slim.convolution2d(net3_1, self.n_filters*4, 3, 1, padding='VALID', scope='conv3_2')
+            net3_1 = slim.convolution2d(net3_0, self.n_kernels*4, 3, 1, padding='VALID', scope='conv3_1', reuse=reuse)
+            net3_2 = slim.convolution2d(net3_1, self.n_kernels*4, 3, 1, padding='VALID', scope='conv3_2', reuse=reuse)
 
             net4_0 = slim.max_pool2d(net3_2, 2, scope='pool3')
-            net4_1 = slim.convolution2d(net4_0, self.n_filters*8, 3, 1, padding='VALID', scope='conv4_1')
-            net4_2 = slim.convolution2d(net4_1, self.n_filters*8, 3, 1, padding='VALID', scope='conv4_2')
+            net4_1 = slim.convolution2d(net4_0, self.n_kernels*8, 3, 1, padding='VALID', scope='conv4_1', reuse=reuse)
+            net4_2 = slim.convolution2d(net4_1, self.n_kernels*8, 3, 1, padding='VALID', scope='conv4_2', reuse=reuse)
 
             net5_0 = slim.max_pool2d(net4_2, 2, scope='pool4')
-            net5_1 = slim.convolution2d(net5_0, self.n_filters*16, 3, 1, padding='VALID', scope='conv5_1')
-            net5_2 = slim.convolution2d(net5_1, self.n_filters*16, 3, 1, padding='VALID', scope='conv5_2')
+            net5_1 = slim.convolution2d(net5_0, self.n_kernels*16, 3, 1, padding='VALID', scope='conv5_1', reuse=reuse)
+            net5_2 = slim.convolution2d(net5_1, self.n_kernels*16, 3, 1, padding='VALID', scope='conv5_2', reuse=reuse)
 
             ## Upsample is by transpose deconvolution
             ## Features from downsampling pass are center-cropped & concatenated
-            net6_0 = slim.convolution2d_transpose(net5_2, self.n_filters*8, 2, 2, padding='VALID',scope='upconv1')
+            net6_0 = slim.convolution2d_transpose(net5_2, self.n_kernels*8, 2, 2, padding='VALID',scope='upconv1', reuse=reuse)
             target = net6_0.get_shape().as_list()[1]
             net4_2_crop = tf.image.resize_image_with_crop_or_pad(net4_2, target, target)
             net6_0 = tf.concat([net4_2_crop, net6_0], axis=-1, name='concat1')
-            net6_1 = slim.convolution2d(net6_0, self.n_filters*8, 3, 1, padding='VALID', scope='conv6_1')
-            net6_2 = slim.convolution2d(net6_1, self.n_filters*8, 3, 1, padding='VALID', scope='conv6_2')
+            net6_1 = slim.convolution2d(net6_0, self.n_kernels*8, 3, 1, padding='VALID', scope='conv6_1', reuse=reuse)
+            net6_2 = slim.convolution2d(net6_1, self.n_kernels*8, 3, 1, padding='VALID', scope='conv6_2', reuse=reuse)
 
-            net7_0 = slim.convolution2d_transpose(net6_2, self.n_filters*4, 2, 2, padding='VALID', scope='upconv2')
+            net7_0 = slim.convolution2d_transpose(net6_2, self.n_kernels*4, 2, 2, padding='VALID', scope='upconv2', reuse=reuse)
             target = net7_0.get_shape().as_list()[1]
             net3_2_crop = tf.image.resize_image_with_crop_or_pad(net3_2, target, target)
             net7_0 = tf.concat([net3_2_crop, net7_0], axis=-1, name='concat2')
-            net7_1 = slim.convolution2d(net7_0, self.n_filters*4, 3, 1, padding='VALID', scope='conv7_1')
-            net7_2 = slim.convolution2d(net7_1, self.n_filters*4, 3, 1, padding='VALID', scope='conv7_2')
+            net7_1 = slim.convolution2d(net7_0, self.n_kernels*4, 3, 1, padding='VALID', scope='conv7_1', reuse=reuse)
+            net7_2 = slim.convolution2d(net7_1, self.n_kernels*4, 3, 1, padding='VALID', scope='conv7_2', reuse=reuse)
 
-            net8_0 = slim.convolution2d_transpose(net7_2, self.n_filters*2, 2, 2, padding='VALID',scope='upconv3')
+            net8_0 = slim.convolution2d_transpose(net7_2, self.n_kernels*2, 2, 2, padding='VALID',scope='upconv3', reuse=reuse)
             target = net8_0.get_shape().as_list()[1]
             net2_2_crop = tf.image.resize_image_with_crop_or_pad(net2_2, target, target)
             net8_0 = tf.concat([net2_2_crop, net8_0], axis=-1, name='concat3')
-            net8_1 = slim.convolution2d(net8_0, self.n_filters*2, 3, 1, padding='VALID', scope='conv8_1')
-            net8_2 = slim.convolution2d(net8_1, self.n_filters*2, 3, 1, padding='VALID', scope='conv8_2')
+            net8_1 = slim.convolution2d(net8_0, self.n_kernels*2, 3, 1, padding='VALID', scope='conv8_1', reuse=reuse)
+            net8_2 = slim.convolution2d(net8_1, self.n_kernels*2, 3, 1, padding='VALID', scope='conv8_2', reuse=reuse)
 
-            net9_0 = slim.convolution2d_transpose(net8_2, self.n_filters, 2, 2, padding='VALID', scope='upconv4')
+            net9_0 = slim.convolution2d_transpose(net8_2, self.n_kernels, 2, 2, padding='VALID', scope='upconv4', reuse=reuse)
             target = net9_0.get_shape().as_list()[1]
             net1_2_crop = tf.image.resize_image_with_crop_or_pad(net1_2, target, target)
             net9_0 = tf.concat([net1_2_crop, net9_0], axis=-1, name='concat4')
-            net9_1 = slim.convolution2d(net9_0, self.n_filters, 3, 1, padding='VALID', scope='conv9_1')
-            net9_2 = slim.convolution2d(net9_1, self.n_filters, 3, 1, padding='VALID', scope='conv9_2')
+            net9_1 = slim.convolution2d(net9_0, self.n_kernels, 3, 1, padding='VALID', scope='conv9_1', reuse=reuse)
+            net9_2 = slim.convolution2d(net9_1, self.n_kernels, 3, 1, padding='VALID', scope='conv9_2', reuse=reuse)
 
             output = slim.convolution2d(net9_2, self.n_classes, 1, 1, padding='VALID', scope='output',
-                activation_fn=None)
+                activation_fn=None, reuse=reuse)
             print 'output', output.get_shape()
 
             ## Crop training mask to match
