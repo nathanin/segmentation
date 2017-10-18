@@ -49,7 +49,9 @@ class BaseModel(object):
         else:
             self.load_snapshot = None
         ## Mode makes load_snapshot true
-        if mode=='INFERENCE': self.load_snapshot = True
+        if mode=='INFERENCE':
+            print 'INFERENCE MODE load snapshot forced True'
+            self.load_snapshot = True
 
         if load_snapshot_from:
             self.load_snapshot_from = load_snapshot_from
@@ -76,6 +78,12 @@ class BaseModel(object):
     """ Setup functions """
     def _init_session(self, sess):
         self.sess = sess
+        self.global_step = tf.Variable(0, trainable=False, name='global_step')
+        self.gs_increment = tf.assign_add(self.global_step, 1)
+
+        if mode == 'INFERENCE':
+            print 'INFERENCE MODE skipping dataset initializations'
+            return
 
         if self.dataset is not None:
             self.dataset.set_tf_sess(self.sess)
@@ -83,8 +91,6 @@ class BaseModel(object):
         if self.log_dir is not None:
             self.summary_writer = tf.summary.FileWriter(self.log_dir, graph=self.sess.graph)
 
-        self.global_step = tf.Variable(0, trainable=False, name='global_step')
-        self.gs_increment = tf.assign_add(self.global_step, 1)
 
 
 
@@ -130,6 +136,7 @@ class BaseModel(object):
     """ Instantiate input functions from a dataset """
     def _init_input(self):
         if self.mode == 'INFERENCE':
+            print 'INFERENCE MODE skipping input'
             ## TODO: deal with variable input shapes; call resize() before inference
             self.input_x = tf.placeholder('float',
                 [None, self.input_dims, self.input_dims, self.input_channel])
@@ -157,6 +164,7 @@ class BaseModel(object):
     """
     def _init_xentropy_loss(self):
         if self.mode == 'INFERENCE':
+            print 'INFERENCE MODE skipping xentropy loss'
             return
 
         self.input_y_onehot = tf.squeeze(tf.one_hot(self.input_y, self.n_classes))
@@ -290,7 +298,9 @@ class BaseModel(object):
 
     """
     def _init_training_ops(self):
-        if self.mode == 'INFERENCE': return
+        if self.mode == 'INFERENCE':
+            print 'INFERENCE MODE skip training ops'
+            return
         self.seg_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='segAdam')
 
         if self.adversarial_training:
@@ -341,6 +351,10 @@ class BaseModel(object):
     Decide if there's a testing dataset, or if we just run the net forward
     """
     def _init_testing(self):
+        if self.mode == 'INFERENCE':
+            print 'INFERENCE MODE skip testing ops'
+            return
+
         if self.test_dataset is None:
             self.test_ops = [self.loss_op]
             return
