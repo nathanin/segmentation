@@ -85,9 +85,9 @@ with tf.Session(config=config) as sess:
         n_classes = 2,
         save_dir = './adv/snapshots',
         log_dir = './adv/logs/{}'.format(itert),
-        load_snapshot = True,
+        load_snapshot = False,
         learning_rate = 1e-3,
-        n_kernels = 8,
+        n_kernels = 16,
         bayesian = True,
         adversarial_training = True)
 

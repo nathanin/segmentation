@@ -38,6 +38,7 @@ class BaseModel(object):
 
         ## Flags for defining the relationship of input to output
         ## The child class should set one
+        ## Wherever this is used IN_OUT_EQUAL should be no-action ..????
         self.IN_OUT_EQUAL = False
         self.IN_OUT_CROP = False
         self.IN_OUT_RATIO = False
@@ -69,6 +70,9 @@ class BaseModel(object):
 
 
 
+
+
+
     """ Setup functions """
     def _init_session(self, sess):
         self.sess = sess
@@ -81,6 +85,9 @@ class BaseModel(object):
 
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
         self.gs_increment = tf.assign_add(self.global_step, 1)
+
+
+
 
 
     """ Set up a saver; load from checkpoint file if it exists:
@@ -117,6 +124,9 @@ class BaseModel(object):
 
 
 
+
+
+
     """ Instantiate input functions from a dataset """
     def _init_input(self):
         if self.mode == 'INFERENCE':
@@ -132,6 +142,11 @@ class BaseModel(object):
 
         print 'input_x:', self.input_x.get_shape(), self.input_x.dtype
         print 'input_y:', self.input_y.get_shape(), self.input_y.dtype
+
+
+
+
+
 
 
     """ Instantiate basic loss function:
@@ -157,6 +172,9 @@ class BaseModel(object):
 
 
 
+
+
+
     """ Adversarial loss functions:
 
     @article{luc2016semantic,
@@ -171,19 +189,21 @@ class BaseModel(object):
         - This net should be lightning fast. Passing the whole sized map is pretty big.
     """
     def _adversarial_net(self, tensor_in, reuse=False):
+        n_kernels = 32
         with tf.variable_scope('adversary') as scope:
             if reuse:
                 tf.get_variable_scope().reuse_variables()
             else:
                 assert tf.get_variable_scope().reuse == False
 
+            ## Downsample this input for faster and more accurate
             h, w = tensor_in.get_shape().as_list()[1:3]
             print '\tadv input', tensor_in.get_shape(), tensor_in.dtype
             tensor_in = tf.image.resize_bilinear(tensor_in, [h//4, w//4])
 
             print '\tadv resize', tensor_in.get_shape(), tensor_in.dtype
             net = slim.convolution2d(tensor_in,
-                num_outputs = 8,
+                num_outputs = n_kernels,
                 kernel_size = 5,
                 stride = 2,
                 padding = 'SAME',
@@ -192,7 +212,7 @@ class BaseModel(object):
             net = slim.max_pool2d(net, 3, 3, scope='adv_pool1')
             print '\tadv pool1', net.get_shape()
 
-            net = slim.convolution2d(net, 32, 5, 2, padding='SAME', scope='adv_conv2', reuse=reuse)
+            net = slim.convolution2d(net, n_kernels*2, 5, 2, padding='SAME', scope='adv_conv2', reuse=reuse)
             net = slim.max_pool2d(net, 3, 3, scope='adv_pool2')
             print '\tadv pool2', net.get_shape()
 
@@ -208,6 +228,10 @@ class BaseModel(object):
             net = slim.fully_connected(net, 2, scope='adv_output', activation_fn=None, reuse=reuse)
             print '\tadv out', net.get_shape()
         return net
+
+
+
+
 
 
 
@@ -246,12 +270,17 @@ class BaseModel(object):
         ## "maximize the prob. that the fake images are called real"
         l_bce_fake_one = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits( labels=self.real_ex, logits=self.fake_adv))
-            ## << the fake one is used for segmentation loss & shouldnt be updated
+        ## << the fake one is used for segmentation loss & should not pass gradients backwards
         self.l_bce_fake_one = tf.stop_gradient(l_bce_fake_one, name='stop_grad')
 
         self.bce_real_summary = tf.summary.scalar('l_bce_real', self.l_bce_real)
         self.bce_fake_summary = tf.summary.scalar('l_bce_fake', self.l_bce_fake)
         self.bce_fake_one_summary = tf.summary.scalar('l_bce_fake_one', self.l_bce_fake_one)
+
+
+
+
+
 
 
 
@@ -267,22 +296,18 @@ class BaseModel(object):
         if self.adversarial_training:
             print 'Using adversarial training'
             ## Turns out the key is to have a second optimizer for the adversarial net
-            self.adversarial_optimizer = tf.train.AdamOptimizer(1e-7, name='advAdam')
+            self.adversarial_optimizer = tf.train.AdamOptimizer(1e-5, name='advAdam')
 
             self._init_xentropy_loss()
             self._init_adversarial_loss()
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) + \lambda (a(x_n, s(x_n)), 1)
-            ## --------- or ----------
-            ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) - \lambda (a(x_n, s(x_n)), 0)
             self.seg_loss_op = self.xentropy_loss_op + self.adv_lambda*self.l_bce_fake_one
-            # self.seg_loss_op = self.xentropy_loss_op - self.adv_lambda*self.l_bce_fake
             self.seg_train_op = self.seg_optimizer.minimize(self.seg_loss_op)
 
             ## \sum_{n=1}^{N} l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)
             self.adv_loss_op = self.l_bce_real + self.l_bce_fake
             self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op)
-            # self.adv_train_op = self.seg_optimizer.minimize(self.adv_loss_op)
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) - ...
             ##      \lambda [l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)]
@@ -305,6 +330,10 @@ class BaseModel(object):
             self.train_op_list = [self.train_op, self.gs_increment]
 
             self.loss_summary = tf.summary.scalar('loss', self.loss_op)
+
+
+
+
 
 
     """ Initialize testing ops
@@ -343,6 +372,10 @@ class BaseModel(object):
         self.test_loss_summary = tf.summary.scalar('test_loss', self.test_loss)
         self.test_ops = [self.test_y_hat, self.test_loss]
 
+
+
+
+
     """ Initializer for summary ops
 
     Adds some generic summary ops which we're pretty sure can always be called
@@ -361,6 +394,9 @@ class BaseModel(object):
 
         self.summary_op = tf.summary.merge_all()
 #/END initializers
+
+
+
 
 
 
@@ -386,6 +422,9 @@ class BaseModel(object):
             #     tf.train.global_step(self.sess, self.global_step))
 
 
+
+
+
     def snapshot(self):
         ## Skip for inference mode
         if self.mode == 'INFERENCE':
@@ -396,6 +435,10 @@ class BaseModel(object):
         self.saver.save(self.sess, self.save_path, global_step=gs)
 
 
+
+
+
+
     def test(self):
         ## Skip for inference mode
         if self.mode == 'INFERENCE':
@@ -404,6 +447,10 @@ class BaseModel(object):
         print 'Testing'
         loss = self.sess.run(self.test_ops)
         self.write_summary(self.summary_op)
+
+
+
+
 
 
     """ Accepts a 4D nparray as input

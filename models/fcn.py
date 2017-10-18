@@ -103,7 +103,7 @@ class FCNModel(BaseModel):
             print 'MODE ERROR'
         return y_hat
 
-    def encode_model(self, input_op, resuse=reuse):
+    def encode_model(self, input_op, reuse=False):
         self.x_dim, self.y_dim = input_op.get_shape().as_list()[1:3]
         print 'x_dim', self.x_dim
         print 'y_dim', self.y_dim
@@ -130,7 +130,7 @@ class FCNModel(BaseModel):
         return net
 
 
-    def fcn32s(self, net, reuse=reuse):
+    def fcn32s(self, net, reuse=False):
         with tf.variable_scope('fcn32s') as scope:
             if reuse:
                 tf.get_variable_scope().reuse_variables()
@@ -145,7 +145,7 @@ class FCNModel(BaseModel):
         return output
 
 
-    def fcn16s(self, net, reuse=reuse):
+    def fcn16s(self, net, reuse=False):
         with tf.variable_scope('fcn16s') as scope:
             if reuse:
                 tf.get_variable_scope().reuse_variables()
@@ -176,7 +176,7 @@ class FCNModel(BaseModel):
         return upscore
 
 
-    def fcn8s(self, net, reuse=reuse):
+    def fcn8s(self, net, reuse=False):
         with tf.variable_scope('fcn8s') as scope:
             if reuse:
                 tf.get_variable_scope().reuse_variables()
