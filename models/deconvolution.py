@@ -104,41 +104,51 @@ class DeconvModel(BaseModel):
         # y_dim = self.input_x.get_shape().as_list()[2]
         x_dim = input_op.get_shape().as_list()[1]
         y_dim = input_op.get_shape().as_list()[2]
+        print 'x_dim', x_dim
+        print 'y_dim', y_dim
         net = slim.convolution2d(input_op,
             num_outputs = self.n_kernels,
             kernel_size = 5,
             stride = 2,
             padding = 'SAME',
-            scope = 'conv1',
+            scope = 'conv1_0',
             reuse=reuse)
-        net = slim.convolution2d(net, self.n_kernels*2,  5, 2, padding='VALID', scope='conv2',reuse=reuse)
+        print 'conv1_0', net.get_shape()
+        net = slim.convolution2d(net, self.n_kernels*2,  5, 2, padding='VALID', scope='conv1_1',reuse=reuse)
+        print 'conv1_1', net.get_shape()
         net = slim.max_pool2d(net, 2, scope='pool2')
-        net = slim.convolution2d(net, self.n_kernels*4, 5, 2, padding='VALID', scope='conv3',reuse=reuse)
-        print 'conv3', net.get_shape()
+        print 'pool2', net.get_shape()
+        net = slim.convolution2d(net, self.n_kernels*4, 5, 2, padding='VALID', scope='conv2_0',reuse=reuse)
+        print 'conv2_0', net.get_shape()
         if self.bayesian:
             net = slim.dropout(net, scope='drop1')
 
-        net = slim.convolution2d(net, self.n_kernels*8, 3, 1, padding='VALID', scope='conv4',reuse=reuse)
-        print 'conv4', net.get_shape()
-        if self.bayesian:
-            net = slim.dropout(net, scope='drop1')
+        # net = slim.convolution2d(net, self.n_kernels*4, 3, 1, padding='VALID', scope='conv3_0',reuse=reuse)
+        # print 'conv4', net.get_shape()
+        # if self.bayesian:
+        #     net = slim.dropout(net, scope='drop1')
 
-        net = slim.convolution2d_transpose(net, self.n_kernels*2, 3, 2, padding='VALID', scope='deconv1', reuse=reuse)
+        ## Decoding
+        net = slim.convolution2d_transpose(net, self.n_kernels*2, 3, 2, padding='VALID', scope='deconv1_0', reuse=reuse)
+        print 'deconv1_0', net.get_shape()
         if self.bayesian:
             net = slim.dropout(net, scope='drop2')
-            
-        net = slim.convolution2d_transpose(net, self.n_kernels, 7, 3, padding='VALID', scope='deconv2', reuse=reuse)
+
+        net = slim.convolution2d_transpose(net, self.n_kernels, 5, 3, padding='VALID', scope='deconv2_0', reuse=reuse)
+        print 'deconv2_0', net.get_shape()
         ## Set to 1/2 input size for 2x upconv
         net = tf.image.resize_bilinear(net, [x_dim//2, y_dim//2])
+        print 'resize', net.get_shape()
         net = slim.convolution2d_transpose(net, self.n_classes, 2, 2,
-            padding='SAME', scope='deconv3', reuse=reuse)#, activation_fn=None)
-        print 'deconv3', net.get_shape()
+            padding='SAME', scope='deconv3_0', reuse=reuse)#, activation_fn=None)
+        print 'deconv3_0', net.get_shape()
 
         ## Force to be the same size as input, if it's off by one
         net = tf.image.resize_image_with_crop_or_pad(net, x_dim, y_dim)
         print 'force_resize', net.get_shape()
 
-        net = slim.convolution2d(net, self.n_classes, 5, 1, padding='SAME', scope='conv_out',
+        net = slim.convolution2d(net, self.n_classes, 3, 1, padding='SAME', scope='conv_out',
             activation_fn=None, reuse=reuse)
+        print 'conv_output', net.get_shape()
 
         return net

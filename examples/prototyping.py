@@ -48,7 +48,7 @@ inference_dir = './{}/inference'.format(experiment)
 
 itert = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 test_iter = 100
-batch_size = 64
+batch_size = 72
 crop_size = 256
 
 
@@ -86,9 +86,9 @@ with tf.Session(config=config) as sess:
         save_dir = './{}/snapshots'.format(experiment),
         log_dir = './{}/logs/{}'.format(experiment, itert),
         load_snapshot = False,
-        learning_rate = 1e-3,
+        learning_rate = 1e-4,
         n_kernels = 64,
-        bayesian = True,
+        bayesian = False,
         autoencoder = True,
         adversarial_training = True)
 

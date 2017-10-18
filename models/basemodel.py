@@ -62,7 +62,7 @@ class BaseModel(object):
 
         if self.adversarial_training:
             ## TODO add support for external aversary ("discriminator") net
-            self.adversarial_update_freq = 5
+            self.adversarial_update_freq = 15
             self._adversarial_net_fn = self._adversarial_net
 
         if self.autoencoder:
@@ -214,7 +214,7 @@ class BaseModel(object):
         - This net should be lightning fast. Passing the whole sized map is pretty big.
     """
     def _adversarial_net(self, tensor_in, reuse=False):
-        n_kernels = 32
+        n_kernels = 36
         with tf.variable_scope('adversary') as scope:
             if reuse:
                 tf.get_variable_scope().reuse_variables()
@@ -337,7 +337,7 @@ class BaseModel(object):
             self.seg_train_op = self.seg_optimizer.minimize(self.seg_loss_op)
 
             ## \sum_{n=1}^{N} l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)
-            self.adv_loss_op = self.l_bce_real + self.l_bce_fake
+            self.adv_loss_op = (self.l_bce_real + self.l_bce_fake) / 2.0
             self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op)
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) - ...
