@@ -15,8 +15,8 @@ Figure 1. The competing standards conundrum.
 - U-Net ([Ronneberger et al, 2015](https://arxiv.org/pdf/1505.04597.pdf))
 - Autoencoder mode for all models. (NOTE: significant tinkering with filters, strides, pads probably required)
   - NEXT conditon $z$ to be a segmentation map with an auxiliary loss term
-- Optional: adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
-- Optional: Bayesian mode for all models ([Kendall & Gal, 2017](https://arxiv.org/pdf/1703.04977.pdf))
+- Adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
+- Bayesian mode for all models ([Kendall & Gal, 2017](https://arxiv.org/pdf/1703.04977.pdf))
   - NEXT implement Bayes sampling at inference
 
 <!-- @article{kendall2017uncertainties,
