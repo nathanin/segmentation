@@ -13,11 +13,12 @@ Figure 1. The competing standards conundrum.
 - Generic convolution / deconvolution model
 - FCN-{32, 16, 8}s ([Long et al, 2014](https://people.eecs.berkeley.edu/~jonlong/long_shelhamer_fcn.pdf))
 - U-Net ([Ronneberger et al, 2015](https://arxiv.org/pdf/1505.04597.pdf))
-- Autoencoder mode for all models. (NOTE: significant tinkering with filters, strides, pads probably required)
+- Separate special autoencoder that squeezes the signal through a vector space
+- Generative Adversarial Networks ([Makhzani & Frey, 2017](https://arxiv.org/pdf/1706.00531.pdf), [Goodfellow et al, 2014](http://papers.nips.cc/paper/5423-generative-adversarial-nets.pdf), [Radford & Metz, 2017](https://arxiv.org/pdf/1511.06434.pdf))
+- Autoencoder mode for all models
   - NEXT conditon $z$ to be a segmentation map with an auxiliary loss term
-- Optional: adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
-- Optional: Bayesian mode for all models ([Kendall & Gal, 2017](https://arxiv.org/pdf/1703.04977.pdf))
-  - NEXT implement Bayes sampling at inference
+- Adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
+- Bayesian mode for all models ([Kendall & Gal, 2017](https://arxiv.org/pdf/1703.04977.pdf))
 
 <!-- @article{kendall2017uncertainties,
   title={What Uncertainties Do We Need in Bayesian Deep Learning for Computer Vision?},
@@ -28,8 +29,9 @@ Figure 1. The competing standards conundrum.
 
 ## Structure
 Big assumption (my use case): training data and masks are in two folders, named alike, and exist as individual images.
-Support for some more advanced data structures is probably plug-and-play.
-But there is threading for the I/O and potential for on-the-fly augmentation, so that's still a plus.
+Support for some more advanced data structures or the TFRecords format.. forthcoming.
+For now, recommend to expand `ImageMaskDataSet` and `ImageDataSet` as necessary.
+But there is threading for the I/O and potential for custom on-the-fly augmentation with tf, so that's still nice.
 
 As-is, one can implement a training / application pipeline as so:
 
@@ -73,7 +75,7 @@ data/
 - To implement a new model, copy + paste an existing `__init__` function, and implement the `model()` method
 - Option to have a separate 'validation' set feed the validation ops. That part is super hacky. But I mean if it's hacky and it works it aint hacky.
 <!-- - See my [other project](https://github.com/nathanin/histo-seg) for a potential use case outside of self-driving cars and benchmarking datasets. -->
-- Adversarial training is pretty unstable, so I set a low learning rate for the adversarial net. Also super necessary to disable gradient backwards pass through the segmentation optimizer. You don't want the adversary net to be trained with that one-sided objective which is actually the opposite of what you really want.
+- Adversarial training is pretty unstable, so I set a low learning rate for the adversarial net, and set it to update less frequently than the main net.
 
 
 ### Known things that don't work right
@@ -84,4 +86,5 @@ data/
 
 #### Comments, feedback, "this is just a bad version of X other repo":
 Use the issues section (gotta get that sweet activity).
+This code comes as is, with absolutely no support.
 For other correspondence, please email directly (<ing.nathany@gmail.com>).

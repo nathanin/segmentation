@@ -45,20 +45,23 @@ class BaseModel(object):
         self.IN_OUT_CROP = False
         self.IN_OUT_RATIO = False
 
-        ## Move if/else somewhere else
-        if load_snapshot:
-            self.load_snapshot = load_snapshot
-        else:
-            self.load_snapshot = None
-        ## Mode makes load_snapshot true
+
+        ## Argument parsing and if/else flag setting
+        self.load_snapshot = load_snapshot if load_snapshot else False
+        # if load_snapshot:
+        #     self.load_snapshot = load_snapshot
+        # else:
+        #     self.load_snapshot = None
+
         if self.mode=='INFERENCE':
-            print 'INFERENCE MODE load snapshot forced True'
+            print 'NOTICE: INFERENCE MODE load snapshot forced True'
             self.load_snapshot = True
 
-        if load_snapshot_from:
-            self.load_snapshot_from = load_snapshot_from
-        else:
-            self.load_snapshot_from = None
+        self.load_snapshot_from = load_snapshot_from if load_snapshot_from else False
+        # if load_snapshot_from:
+        #     self.load_snapshot_from = load_snapshot_from
+        # else:
+        #     self.load_snapshot_from = None
 
         if self.adversarial_training:
             ## TODO add support for external aversary ("discriminator") net
@@ -79,12 +82,13 @@ class BaseModel(object):
                 labels=nested_yprep_fn(y), logits=y_hat)
         ## /end if/else
 
+
+        ## Controls how often we write the summary. Summary writing impacts speed maybe?
         self.summary_iter = 5
-        self.init_op = tf.global_variables_initializer()
 
         ## Always needed
+        self.init_op = tf.global_variables_initializer()
         self._init_session(sess)
-
 
 
 
@@ -105,7 +109,6 @@ class BaseModel(object):
 
         if self.log_dir is not None:
             self.summary_writer = tf.summary.FileWriter(self.log_dir, graph=self.sess.graph)
-
 
 
 
@@ -178,7 +181,6 @@ class BaseModel(object):
 
 
 
-
     """ Instantiate basic loss function """
     def _init_xentropy_loss(self):
         if self.mode == 'INFERENCE':
@@ -198,8 +200,6 @@ class BaseModel(object):
 
 
 
-
-
     """ Adversarial loss functions:
 
     @article{luc2016semantic,
@@ -212,9 +212,11 @@ class BaseModel(object):
     Some random set of convolutions /pools not necessarily lifted from their paper
     Experiment with downsampling the input
         - This net should be lightning fast. Passing the whole sized map is pretty big.
+        - The training benefits from a strong adversary.
     """
     def _adversarial_net(self, tensor_in, reuse=False):
         n_kernels = 36
+        dadv = 2
         with tf.variable_scope('adversary') as scope:
             if reuse:
                 tf.get_variable_scope().reuse_variables()
@@ -224,31 +226,38 @@ class BaseModel(object):
             ## Downsample this input for faster and more accurate
             h, w = tensor_in.get_shape().as_list()[1:3]
             print '\tadv input', tensor_in.get_shape(), tensor_in.dtype
-            tensor_in = tf.image.resize_bilinear(tensor_in, [h//2, w//2])
+            tensor_in = tf.image.resize_bilinear(tensor_in, [h//dadv, w//dadv])
 
             print '\tadv resize', tensor_in.get_shape(), tensor_in.dtype
             net = slim.convolution2d(tensor_in,
                 num_outputs = n_kernels,
-                kernel_size = 5,
+                kernel_size = 3,
                 stride = 2,
-                padding = 'SAME',
+                padding = 'VALID',
                 scope = 'adv_conv1',
                 reuse = reuse)
+            net = slim.batch_norm(net, scope='adv_bn1', reuse=reuse)
             net = slim.max_pool2d(net, 2, 2, scope='adv_pool1')
             print '\tadv pool1', net.get_shape()
 
-            net = slim.convolution2d(net, n_kernels*2, 5, 2, padding='SAME', scope='adv_conv2', reuse=reuse)
+            net = slim.convolution2d(net, n_kernels*2, 3, 2, padding='VALID', scope='adv_conv2', reuse=reuse)
+            net = slim.batch_norm(net, scope='adv_bn2', reuse=reuse)
             net = slim.max_pool2d(net, 2, 2, scope='adv_pool2')
             print '\tadv pool2', net.get_shape()
 
-            # net = slim.convolution2d(net, 32, 5, 2, padding= 'VALID', scope='adv_conv3')
-            # net = slim.max_pool2d(net, 2, scope='adv_pool3')
+            ## Can never decide if i want this last convolution or not
+            # net = slim.convolution2d(net, n_kernels*4, 3, 1, padding= 'VALID', scope='adv_conv3')
+            # net = slim.max_pool2d(net, 2, 2, scope='adv_pool3')
             # print '\tadv pool3', net.get_shape()
 
             net = slim.flatten(net, scope='adv_flat')
+            net = slim.batch_norm(net, scope='adv_bn3', reuse=reuse)
             print '\tadv flat', net.get_shape()
-            net = slim.fully_connected(net, 512, scope='adv_fc1', reuse=reuse)
+
+            net = slim.fully_connected(net, 1024, scope='adv_fc1', reuse=reuse)
+            net = slim.batch_norm(net, scope='adv_bn4', reuse=reuse)
             print '\tadv fc', net.get_shape()
+
             ## Add some bias = [1,0] so that all images are called fake at first
             net = slim.fully_connected(net, 2, scope='adv_output', activation_fn=None, reuse=reuse)
             print '\tadv out', net.get_shape()
@@ -290,10 +299,10 @@ class BaseModel(object):
             tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv))
 
         ## Fakes accuracy
-        self.accuracy_fake_detection = tf.reduce_mean(tf.cast(tf.equal(
-            tf.argmax(self.fake_ex), tf.argmax(self.fake_adv)), tf.float32))
-        self.accuracy_real_detection = tf.reduce_mean(tf.cast(tf.equal(
-            tf.argmax(self.real_ex), tf.argmax(self.real_adv)), tf.float32))
+        self.accuracy_fake_detection = tf.metrics.accuracy(
+            labels=tf.argmax(self.fake_ex), predictions=tf.argmax(self.fake_adv) )
+        self.accuracy_real_detection = tf.metrics.accuracy(
+            labels=tf.argmax(self.real_ex), predictions=tf.argmax(self.real_adv) )
 
         ## Flip the direction for traning
         ## "maximize the prob. that the fake images are called real"
@@ -327,18 +336,22 @@ class BaseModel(object):
         if self.adversarial_training:
             print 'Using adversarial training'
             ## Turns out the key is to have a second optimizer for the adversarial net
-            self.adversarial_optimizer = tf.train.AdamOptimizer(1e-6, name='advAdam')
+            self.adversarial_optimizer = tf.train.AdamOptimizer(1e-4, name='advAdam')
 
             self._init_xentropy_loss()
             self._init_adversarial_loss()
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) + \lambda (a(x_n, s(x_n)), 1)
             self.seg_loss_op = self.xentropy_loss_op + self.adv_lambda*self.l_bce_fake_one
-            self.seg_train_op = self.seg_optimizer.minimize(self.seg_loss_op)
 
             ## \sum_{n=1}^{N} l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)
             self.adv_loss_op = (self.l_bce_real + self.l_bce_fake) / 2.0
-            self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op)
+
+            ## ?? slim documentation says to do this for batch_norm layers
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            with tf.control_dependencies(update_ops):
+                self.seg_train_op = self.seg_optimizer.minimize(self.seg_loss_op)
+                self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op)
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) - ...
             ##      \lambda [l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)]
@@ -356,7 +369,11 @@ class BaseModel(object):
             print 'Using standard x-entropy training'
             self._init_xentropy_loss()
             self.loss_op = self.xentropy_loss_op
-            self.train_op = self.seg_optimizer.minimize(self.loss_op)
+
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            with tf.control_dependencies(update_ops):
+                self.train_op = self.seg_optimizer.minimize(self.loss_op)
+
             self.train_op_list = [self.train_op, self.gs_increment]
 
             self.loss_summary = tf.summary.scalar('loss', self.loss_op)
@@ -385,7 +402,8 @@ class BaseModel(object):
         # self.test_y_onehot = tf.one_hot(self.test_y, self.n_classes)
 
         ## Turn on reuse
-        self.test_y_hat = self.model(self.test_x, reuse=True)
+        ## Set training=False
+        self.test_y_hat = self.model(self.test_x, reuse=True, training=False)
 
         if self.autoencoder:
             ## This use case is pixel-wise regression

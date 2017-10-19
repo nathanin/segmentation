@@ -8,3 +8,4 @@ examples/deconv/
 examples/fcn/
 examples/unet/
 examples/auto/
+prototxt/

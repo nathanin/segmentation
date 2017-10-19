@@ -25,6 +25,7 @@ sys.path.insert(0, '../models')
 from deconvolution import DeconvModel
 from unet import UNetModel
 from fcn import FCNModel
+from autoencoder import StackedAutoencoder
 
 sys.path.insert(0, '../utils')
 from datasets import ImageMaskDataSet, load_images
@@ -48,7 +49,7 @@ inference_dir = './{}/inference'.format(experiment)
 
 itert = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 test_iter = 100
-batch_size = 72
+batch_size = 64
 crop_size = 256
 
 
@@ -78,7 +79,21 @@ with tf.Session(config=config) as sess:
         min_holding= batch_size,
         threads    = 4)
 
-    network = DeconvModel(
+    # network = DeconvModel(
+    #     sess = sess,
+    #     dataset = dataset,
+    #     test_dataset = test_dataset,
+    #     n_classes = 2,
+    #     save_dir = './{}/snapshots'.format(experiment),
+    #     log_dir = './{}/logs/{}'.format(experiment, itert),
+    #     load_snapshot = False,
+    #     learning_rate = 1e-4,
+    #     n_kernels = 64,
+    #     bayesian = False,
+    #     autoencoder = False,
+    #     adversarial_training = True)
+
+    network = StackedAutoencoder(
         sess = sess,
         dataset = dataset,
         test_dataset = test_dataset,
@@ -89,7 +104,6 @@ with tf.Session(config=config) as sess:
         learning_rate = 1e-4,
         n_kernels = 64,
         bayesian = False,
-        autoencoder = True,
         adversarial_training = True)
 
     # network = UNetModel(
@@ -116,11 +130,16 @@ with tf.Session(config=config) as sess:
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(coord=coord)
 
-    print 'Train/test loop:'
+    """
+
+    Training loop. Call network.train_step() once for each global step.
+    Insert testing / snapshotting however you want.
+
+    """
     tstart = time.time()
     for _ in range(50):
         t_outer_loop = time.time()
-        for k in range(500):
+        for k in range(1000):
             t_inner_loop = time.time()
             network.train_step()
             if k % test_iter == 0:
