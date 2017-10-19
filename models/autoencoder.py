@@ -13,6 +13,18 @@ We have two options:
     move the special autoencoder options into this file
     keep as-is with the if-case in the BaseModel
 
+
+actually the good, proper, OOP solution is to factor like this:
+
+class Autoencoder(BaseModel):
+    --- stuff
+
+class StackedAutoencoder(Autoencoder):
+    --- model()
+
+class MultiScaleAutoencoder(Autoencoder):
+    --- model()
+
 """
 
 class StackedAutoencoder(BaseModel):
@@ -32,7 +44,8 @@ class StackedAutoencoder(BaseModel):
         load_snapshot_from = None,
         n_kernels = 32,
         autoencoder = True,
-        adversarial_training = True):
+        adversarial_training = True,
+        zed_dim = 64):
 
 
         ## TODO: Check args
@@ -62,7 +75,7 @@ class StackedAutoencoder(BaseModel):
 
         ## Custom things for this model
         self.n_kernels = n_kernels
-        with tf.name_scope('ConvDeconv') as scope:
+        with tf.name_scope('Autoencoder') as scope:
             print 'Instantiating net'
             self.y_hat = self.model(self.input_x, reuse=False)
 
@@ -201,7 +214,8 @@ class MultiScaleAutoencoder(BaseModel):
         load_snapshot_from = None,
         n_kernels = 32,
         autoencoder = True,
-        adversarial_training = True):
+        adversarial_training = True,
+        zed_dim = 64):
 
 
         ## TODO: Check args
