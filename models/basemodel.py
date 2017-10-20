@@ -456,17 +456,12 @@ class BaseModel(object):
             print 'INFERENCE MODE skip _init_summary_ops()'
             return
 
-        self.gt_summary = tf.summary.image('input_y', tf.cast(self.input_y, tf.float32), max_outputs=3)
-        self.input_summary = tf.summary.image('input_x', self.input_x, max_outputs=3)
-        self.output_summary = tf.summary.image('y_hat', self.output, max_outputs=3)
+        # self.gt_summary = tf.summary.image('input_y', tf.cast(self.input_y, tf.float32), max_outputs=3)
+        # self.input_summary = tf.summary.image('input_x', self.input_x, max_outputs=3)
+        # self.output_summary = tf.summary.image('y_hat', self.output, max_outputs=3)
         # self.output_summary = tf.summary.image('mask', self.y_hat_sig, max_outputs=4)
 
-        self.summary_op = tf.summary.merge([
-            self.gt_summary,
-            self.xentropy_summary,
-            self.input_summary,
-            self.output_summary,
-            self.loss_summary])
+        self.summary_op = tf.summary.merge([ self.xentropy_summary, self.loss_summary])
 
         ## Add in the adverarial training related summaries
         if self.adversarial_training:
