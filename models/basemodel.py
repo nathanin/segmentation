@@ -57,7 +57,8 @@ class BaseModel(object):
 
         if self.adversarial_training:
             ## TODO add support for external aversary ("discriminator") net
-            self.adversarial_update_freq = 25
+            self.adversarial_update_freq = 10
+            self.adversarial_lr = 1e-5
             self._adversarial_net_fn = self._adversarial_net
 
         if self.autoencoder:
@@ -332,7 +333,8 @@ class BaseModel(object):
             print 'Using adversarial training'
             ## Turns out the key is to have a second optimizer for the adversarial net
             ## with a LOW learning rate!!
-            self.adversarial_optimizer = tf.train.AdamOptimizer(1e-4, name='advAdam')
+            self.adversarial_optimizer = tf.train.AdamOptimizer(
+                self.adversarial_lr, name='advAdam')
 
             self._init_xentropy_loss()
             self._init_adversarial_loss()

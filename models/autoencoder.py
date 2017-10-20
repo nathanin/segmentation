@@ -292,6 +292,7 @@ class MultiScaleAutoencoder(BaseModel):
     def model(self, input_op, reuse=False, training=True):
         self.x_dim = input_op.get_shape().as_list()[1]
         self.y_dim = input_op.get_shape().as_list()[2]
+        self.batch_size = input_op.get_shape().as_list()[0]
         print '\tx_dim', self.x_dim
         print '\ty_dim', self.y_dim
 
@@ -323,8 +324,11 @@ class MultiScaleAutoencoder(BaseModel):
         conv1_2 = slim.batch_norm(conv1_2, scope='bn1', reuse=reuse, is_training=training)
         pool1 = slim.max_pool2d(conv1_2, 3, 3, scope='pool1')
 
+        ## Make zed an image
         zed_1 = slim.flatten(pool1, scope='flat1')
-        zed_1 = slim.fully_connected(zed_1, self.zed_dim, scope='zed_1', reuse=reuse)
+        zed_1 = slim.fully_connected(zed_1, self.zed_dim, scope='zed_1', reuse=reuse,
+            activation_fn=tf.nn.sigmoid)
+        zed_1 = tf.reshape(zed_1, [self.batch_size, 8, 8, 1])
         print '\tzed_1', zed_1.get_shape()
 
 
@@ -340,8 +344,11 @@ class MultiScaleAutoencoder(BaseModel):
         # pool2 = slim.max_pool2d(conv2_2, 3, 3, scope='pool2')
         # print '\tpool2', pool2.get_shape()
 
+        ## Make zed an image
         zed_2 = slim.flatten(conv2_2, scope='flat2')
-        zed_2 = slim.fully_connected(zed_2, self.zed_dim, scope='zed_2', reuse=reuse)
+        zed_2 = slim.fully_connected(zed_2, self.zed_dim, scope='zed_2', reuse=reuse,
+            activation_fn=tf.nn.sigmoid)
+        zed_2 = tf.reshape(zed_2, [self.batch_size, 8, 8, 1])
         print '\tzed_2', zed_2.get_shape()
 
         conv3_0 = slim.convolution2d(conv2_2, self.n_kernels*4, 3, 1, padding='VALID', scope='conv3_0',reuse=reuse)
@@ -357,11 +364,16 @@ class MultiScaleAutoencoder(BaseModel):
         # print '\tpool3', pool3.get_shape()
 
         zed_3 = slim.flatten(conv3_2, scope='flat2')
-        zed_3 = slim.fully_connected(zed_3, self.zed_dim, scope='zed_3', reuse=reuse)
+        zed_3 = slim.fully_connected(zed_3, self.zed_dim, scope='zed_3', reuse=reuse,
+            activation_fn=tf.nn.sigmoid)
+        zed_3 = tf.reshape(zed_3, [self.batch_size, 8, 8, 1])
 
         zed = tf.concat([zed_1, zed_2, zed_3], axis=-1)
         print '\tzed_concat', zed.get_shape()
-        zed = slim.fully_connected(zed, self.zed_dim, scope='zed', reuse=reuse, activation_fn=None)
+        zed = slim.convolution2d(zed, 1, 3, 1, padding='SAME', scope='zed_conv', reuse=reuse)
+        zed = slim.flatten(zed)
+        zed = slim.fully_connected(zed, self.zed_dim, scope='zed', reuse=reuse,
+            activation_fn=None, biases_initializer=None)
         print '\tzed', zed.get_shape()
 
         return zed
@@ -372,11 +384,14 @@ class MultiScaleAutoencoder(BaseModel):
         ## Decoding
         ## Reshape zed
         ## Use zed as a number of kernels
-        zed = tf.expand_dims(zed, axis=1)
-        zed = tf.expand_dims(zed, axis=2)
-        print '\tzed_expand', zed.get_shape()
+        # zed = tf.expand_dims(zed, axis=1)
+        # zed = tf.expand_dims(zed, axis=2)
+        # print '\tzed_expand', zed.get_shape()
 
-        zed = slim.convolution2d_transpose(zed, self.zed_dim, 7, 1, padding='VALID', scope='zed_upsample', reuse=reuse)
+        zed = tf.reshape(zed, [self.batch_size, 8, 8, 1])
+        print '\tdecode_zed_reshape', zed.get_shape()
+
+        zed = slim.convolution2d_transpose(zed, self.n_kernels*4, 3, 2, padding='VALID', scope='zed_upsample', reuse=reuse)
         print '\tzed_upsample', zed.get_shape()
 
         net = slim.convolution2d_transpose(zed, self.n_kernels*2, 5, 2, padding='VALID', scope='deconv1_0', reuse=reuse)

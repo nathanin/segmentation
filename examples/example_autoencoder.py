@@ -46,7 +46,7 @@ inference_dir = 'examples/{}/inference'.format(experiment)
 log_dir = 'examples/{}/logs/{}'.format(experiment, itert)
 save_dir = 'examples/{}/snapshots'.format(experiment)
 
-test_iter = 500
+test_iter = 250
 batch_size = 64
 crop_size = 256
 
