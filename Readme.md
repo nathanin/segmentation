@@ -13,9 +13,9 @@ Figure 1. The competing standards conundrum.
 - Generic convolution / deconvolution model
 - FCN-{32, 16, 8}s ([Long et al, 2014](https://people.eecs.berkeley.edu/~jonlong/long_shelhamer_fcn.pdf))
 - U-Net ([Ronneberger et al, 2015](https://arxiv.org/pdf/1505.04597.pdf))
-- Separate special autoencoder that squeezes the signal through a vector space
+- Autoencoder, multi-scale autoencoder with latent vector (squishes signal through 1D bottleneck)
 - Generative Adversarial Networks ([Makhzani & Frey, 2017](https://arxiv.org/pdf/1706.00531.pdf), [Goodfellow et al, 2014](http://papers.nips.cc/paper/5423-generative-adversarial-nets.pdf), [Radford & Metz, 2017](https://arxiv.org/pdf/1511.06434.pdf))
-- Autoencoder mode for all models
+- Autoencoder mode for all models (separate from standalone autoencoder)
   - NEXT conditon $z$ to be a segmentation map with an auxiliary loss term
 - Adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
 - Bayesian mode for all models ([Kendall & Gal, 2017](https://arxiv.org/pdf/1703.04977.pdf))
@@ -82,9 +82,8 @@ data/
 - Tensorboard only shows me the input pipeline? Where is my model?
 - Input pipeline could & should & must be faster
 - Logging is clunky; iterative experimentation is clunky
-- Small bug: test runs every time summary_op is run. How to split up a different summary?
 
 #### Comments, feedback, "this is just a bad version of X other repo":
 Use the issues section (gotta get that sweet activity).
-This code comes as is, with absolutely no support.
+This research / eductaional implementation comes as is, with absolutely no support.
 For other correspondence, please email directly (<ing.nathany@gmail.com>).
