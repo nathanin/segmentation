@@ -21,30 +21,32 @@ import sys, time, random, cv2, os, glob, datetime
 import tensorflow as tf
 import numpy as np
 
-sys.path.insert(0, '../models')
-from deconvolution import DeconvModel
-from unet import UNetModel
-from fcn import FCNModel
-from autoencoder import StackedAutoencoder
+sys.path.insert(0, '.')
+# sys.path.insert(0, 'models')
+# from autoencoder import StackedAutoencoder
+from models.autoencoder import StackedAutoencoder, MultiScaleAutoencoder
 
-sys.path.insert(0, '../utils')
-from datasets import ImageMaskDataSet, load_images
+# sys.path.insert(0, 'utils')
+# from datasets import ImageMaskDataSet, load_images
+from utils.datasets import ImageDataSet, load_images
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
-feat_dir = '../../data/feature'
-mask_dir = '../../data/label'
-feat_test_dir = '../../data/test/feature'
-mask_test_dir = '../../data/test/label'
+itert = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+feat_dir = '../data/feature'
+mask_dir = '../data/label'
+feat_test_dir = '../data/test/feature'
+mask_test_dir = '../data/test/label'
 image_ext = 'jpg'
 experiment = 'auto'
 
 img_list = sorted(glob.glob(os.path.join(feat_test_dir, '*.'+image_ext)))
-inference_dir = './{}/inference'.format(experiment)
+inference_dir = 'examples/{}/inference'.format(experiment)
+log_dir = 'examples/{}/logs/{}'.format(experiment, itert)
+save_dir = 'examples/{}/snapshots'.format(experiment)
 
-itert = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-test_iter = 100
+test_iter = 500
 batch_size = 64
 crop_size = 256
 
@@ -55,7 +57,7 @@ with tf.Session(config=config) as sess:
     """ TRAINING MODE
     Dataset used to define batch and input shape
     """
-    dataset = ImageMaskDataSet(feat_dir, mask_dir,
+    dataset = ImageDataSet(feat_dir,
         image_ext  = image_ext,
         n_classes  = 2,
         batch_size = batch_size,
@@ -65,7 +67,7 @@ with tf.Session(config=config) as sess:
         min_holding= batch_size*5,
         threads    = 8)
 
-    test_dataset = ImageMaskDataSet(feat_test_dir, mask_test_dir,
+    test_dataset = ImageDataSet(feat_test_dir,
         image_ext  = image_ext,
         n_classes  = 2,
         batch_size = batch_size,
@@ -75,27 +77,14 @@ with tf.Session(config=config) as sess:
         min_holding= batch_size,
         threads    = 4)
 
-    # network = DeconvModel(
-    #     sess = sess,
-    #     dataset = dataset,
-    #     test_dataset = test_dataset,
-    #     n_classes = 2,
-    #     save_dir = './{}/snapshots'.format(experiment),
-    #     log_dir = './{}/logs/{}'.format(experiment, itert),
-    #     load_snapshot = False,
-    #     learning_rate = 1e-4,
-    #     n_kernels = 64,
-    #     bayesian = False,
-    #     autoencoder = False,
-    #     adversarial_training = True)
-
-    network = StackedAutoencoder(
+    # network = StackedAutoencoder(
+    network = MultiScaleAutoencoder(
         sess = sess,
         dataset = dataset,
         test_dataset = test_dataset,
         n_classes = 2,
-        save_dir = './{}/snapshots'.format(experiment),
-        log_dir = './{}/logs/{}'.format(experiment, itert),
+        save_dir = save_dir,
+        log_dir = log_dir,
         load_snapshot = False,
         learning_rate = 1e-4,
         n_kernels = 64,

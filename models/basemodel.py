@@ -48,24 +48,16 @@ class BaseModel(object):
 
         ## Argument parsing and if/else flag setting
         self.load_snapshot = load_snapshot if load_snapshot else False
-        # if load_snapshot:
-        #     self.load_snapshot = load_snapshot
-        # else:
-        #     self.load_snapshot = None
 
         if self.mode=='INFERENCE':
             print 'NOTICE: INFERENCE MODE load snapshot forced True'
             self.load_snapshot = True
 
         self.load_snapshot_from = load_snapshot_from if load_snapshot_from else False
-        # if load_snapshot_from:
-        #     self.load_snapshot_from = load_snapshot_from
-        # else:
-        #     self.load_snapshot_from = None
 
         if self.adversarial_training:
             ## TODO add support for external aversary ("discriminator") net
-            self.adversarial_update_freq = 15
+            self.adversarial_update_freq = 25
             self._adversarial_net_fn = self._adversarial_net
 
         if self.autoencoder:
@@ -170,7 +162,12 @@ class BaseModel(object):
             print 'AUTOENCODER mode settings input_y = input_x'
             self.input_y = self.input_x
         else:
-            self.input_y = self.dataset.mask_op
+            if dataset.has_masks:
+                self.input_y = self.dataset.mask_op
+            else:
+                raise Exception('No dataset.mask_op found. Is it ImageMaskDataSet?')
+
+
         # self.input_y = tf.cast(input_y, tf.uint8)
 
         print 'input_x:', self.input_x.get_shape(), self.input_x.dtype
@@ -194,8 +191,6 @@ class BaseModel(object):
             self.objective_fn( y=self.input_y, y_hat=self.y_hat))
 
         self.xentropy_summary = tf.summary.scalar('seg_xentropy', self.xentropy_loss_op)
-        print 'xentropy loss op:', self.xentropy_loss_op.dtype
-
 
 
 
@@ -216,7 +211,7 @@ class BaseModel(object):
     """
     def _adversarial_net(self, tensor_in, reuse=False):
         n_kernels = 36
-        dadv = 2
+        dadv = 4
         with tf.variable_scope('adversary') as scope:
             if reuse:
                 tf.get_variable_scope().reuse_variables()
@@ -299,10 +294,10 @@ class BaseModel(object):
             tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv))
 
         ## Fakes accuracy
-        self.accuracy_fake_detection = tf.metrics.accuracy(
-            labels=tf.argmax(self.fake_ex), predictions=tf.argmax(self.fake_adv) )
-        self.accuracy_real_detection = tf.metrics.accuracy(
-            labels=tf.argmax(self.real_ex), predictions=tf.argmax(self.real_adv) )
+        # self.accuracy_fake_detection = tf.metrics.accuracy(
+        #     labels=tf.argmax(self.fake_ex), predictions=tf.argmax(self.fake_adv) )
+        # self.accuracy_real_detection = tf.metrics.accuracy(
+        #     labels=tf.argmax(self.real_ex), predictions=tf.argmax(self.real_adv) )
 
         ## Flip the direction for traning
         ## "maximize the prob. that the fake images are called real"
@@ -314,8 +309,8 @@ class BaseModel(object):
         self.bce_real_summary = tf.summary.scalar('l_bce_real', self.l_bce_real)
         self.bce_fake_summary = tf.summary.scalar('l_bce_fake', self.l_bce_fake)
         self.bce_fake_one_summary = tf.summary.scalar('l_bce_fake_one', self.l_bce_fake_one)
-        self.fake_detection = tf.summary.scalar('fake_acc', self.accuracy_fake_detection)
-        self.real_detection = tf.summary.scalar('real_acc', self.accuracy_real_detection)
+        # self.fake_detection = tf.summary.scalar('fake_acc', self.accuracy_fake_detection)
+        # self.real_detection = tf.summary.scalar('real_acc', self.accuracy_real_detection)
 
 
 
@@ -336,6 +331,7 @@ class BaseModel(object):
         if self.adversarial_training:
             print 'Using adversarial training'
             ## Turns out the key is to have a second optimizer for the adversarial net
+            ## with a LOW learning rate!!
             self.adversarial_optimizer = tf.train.AdamOptimizer(1e-4, name='advAdam')
 
             self._init_xentropy_loss()
@@ -381,10 +377,7 @@ class BaseModel(object):
 
 
 
-    """ Initialize testing ops
-
-    Decide if there's a testing dataset, or if we just run the net forward
-    """
+    """ Initialize testing ops """
     def _init_testing(self):
         if self.mode == 'INFERENCE':
             print 'INFERENCE MODE skip testing ops'
@@ -411,6 +404,9 @@ class BaseModel(object):
             self.test_output = self.test_y_hat
         else:
             ## The other use case is segmentation
+            if not self.test_dataset.has_masks:
+                raise Exception('No mask_op in test_dataset. Is it ImageMaskDataSet?')
+
             self.test_y = self.test_dataset.mask_op
             self.test_output = tf.argmax(self.test_y_hat, axis=-1)
             self.test_output = tf.expand_dims(tf.cast(self.test_output, tf.float32), -1)
@@ -469,8 +465,8 @@ class BaseModel(object):
                 self.bce_fake_one_summary,
                 self.bce_real_summary,
                 self.bce_fake_summary,
-                self.fake_detection,
-                self.real_detection,
+                # self.fake_detection,
+                # self.real_detection,
                 self.adv_loss_summary ])
 
             self.summary_op = tf.summary.merge([

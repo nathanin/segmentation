@@ -89,6 +89,7 @@ class ImageMaskDataSet(object):
         self.threads = threads
         self.image_ext = image_ext
         self.min_holding = min_holding
+        self.has_masks = True
 
         self.preprocess_fn = self._preprocessing
 
@@ -165,11 +166,10 @@ class ImageMaskDataSet(object):
 class ImageDataSet(object):
     def __init__(self,
                  image_dir,
-                 mask_dir,
                  n_classes  = 2,
                  batch_size = 96,
                  crop_size  = 256,
-                 ratio      = 1.0,
+                 ratio      = 1.0, ## for future
                  capacity   = 2000,
                  image_ext  = 'jpg',
                  seed       = 5555,
@@ -178,7 +178,7 @@ class ImageDataSet(object):
 
         self.image_names = tf.convert_to_tensor(sorted(glob.glob(
         os.path.join(image_dir, '*.'+image_ext) )))
-        print '{} image files starting with {}'.format(self.image_names.shape, self.image_names[0])
+        print '{} image files from {}'.format(self.image_names.shape, image_dir)
 
         self.batch_size = batch_size
         self.crop_size  = crop_size
@@ -188,6 +188,7 @@ class ImageDataSet(object):
         self.threads = threads
         self.image_ext = image_ext
         self.min_holding = min_holding
+        self.has_masks = False
 
         self.preprocess_fn = self._preprocessing
 
@@ -212,7 +213,7 @@ class ImageDataSet(object):
             image_op = tf.image.decode_image(image_file)
 
             image_op = self.preprocess_fn(image_op)
-            image_op = tf.train.shuffle_batch(image_op,
+            image_op = tf.train.shuffle_batch([image_op],
                 batch_size = self.batch_size,
                 capacity   = self.capacity,
                 min_after_dequeue = self.min_holding,
@@ -228,6 +229,6 @@ class ImageDataSet(object):
 
         ## Perform a random crop
         image = tf.random_crop(image,
-            [self.crop_size, self.crop_size, 4])
+            [self.crop_size, self.crop_size, 3])
 
         return image
