@@ -85,5 +85,5 @@ data/
 
 #### Comments, feedback, "this is just a bad version of X other repo":
 Use the issues section (gotta get that sweet activity).
-This research / eductaional implementation comes as is, with absolutely no support.
+This research/educational implementation comes as is, with absolutely no warranty or support.
 For other correspondence, please email directly (<ing.nathany@gmail.com>).
