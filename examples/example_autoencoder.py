@@ -24,7 +24,7 @@ import numpy as np
 sys.path.insert(0, '.')
 # sys.path.insert(0, 'models')
 # from autoencoder import StackedAutoencoder
-from models.autoencoder import StackedAutoencoder, MultiScaleAutoencoder
+from models.autoencoder import Autoencoder
 
 # sys.path.insert(0, 'utils')
 # from datasets import ImageMaskDataSet, load_images
@@ -34,21 +34,22 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
 itert = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-feat_dir = '../data/feature'
-mask_dir = '../data/label'
-feat_test_dir = '../data/test/feature'
-mask_test_dir = '../data/test/label'
-image_ext = 'jpg'
+feat_dir = '/Users/nathaning/_original_data/nuclei/pca/img'
+feat_test_dir = '/Users/nathaning/_original_data/nuclei/pca/img'
+image_ext = 'png'
+# feat_dir = '../data/feature'
+# feat_test_dir = '../data/test/feature'
+# image_ext = 'jpg'
 experiment = 'auto'
 
-img_list = sorted(glob.glob(os.path.join(feat_test_dir, '*.'+image_ext)))
+# img_list = sorted(glob.glob(os.path.join(feat_test_dir, '*.'+image_ext)))
 inference_dir = 'examples/{}/inference'.format(experiment)
 log_dir = 'examples/{}/logs/{}'.format(experiment, itert)
 save_dir = 'examples/{}/snapshots'.format(experiment)
 
-test_iter = 250
+test_iter = 25
 batch_size = 64
-crop_size = 256
+crop_size = 128
 
 
 # with tf.Graph().as_default():
@@ -77,8 +78,7 @@ with tf.Session(config=config) as sess:
         min_holding= batch_size,
         threads    = 4)
 
-    # network = StackedAutoencoder(
-    network = MultiScaleAutoencoder(
+    network = Autoencoder(
         sess = sess,
         dataset = dataset,
         test_dataset = test_dataset,
@@ -86,10 +86,12 @@ with tf.Session(config=config) as sess:
         save_dir = save_dir,
         log_dir = log_dir,
         load_snapshot = False,
-        learning_rate = 1e-4,
-        n_kernels = 64,
+        learning_rate = 1e-5,
+        n_kernels = 16,
         bayesian = False,
-        adversarial_training = True)
+        adversarial_training = True,
+        variational = True,
+        zed_dim = 64)
 
     ## Has to come after init_op ???
     coord = tf.train.Coordinator()
@@ -110,8 +112,6 @@ with tf.Session(config=config) as sess:
             network.train_step()
             if k % test_iter == 0:
                 network.test()
-                # print 'Testing... loss={:3.5f}\tTime:{}'.format(network.test(),
-                #     time.time()-t_inner_loop)
 
         print 'Time: {}'.format(time.time() - t_outer_loop)
         network.snapshot()

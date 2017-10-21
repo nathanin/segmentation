@@ -188,8 +188,8 @@ class BaseModel(object):
         # self.input_y_onehot = tf.squeeze(tf.one_hot(self.input_y, self.n_classes))
         # print 'input_y_onehot', self.input_y_onehot.get_shape()
 
-        self.xentropy_loss_op = tf.reduce_mean(
-            self.objective_fn( y=self.input_y, y_hat=self.y_hat))
+        # self.xentropy_loss_op = tf.reduce_mean( self.objective_fn( y=self.input_y, y_hat=self.y_hat))
+        self.xentropy_loss_op = self.objective_fn( y=self.input_y, y_hat=self.y_hat)
 
         self.xentropy_summary = tf.summary.scalar('seg_xentropy', self.xentropy_loss_op)
 
@@ -287,12 +287,12 @@ class BaseModel(object):
         self.fake_ex = tf.one_hot(tf.zeros_like(tf.argmax(self.fake_adv, 1)), 2)
 
         ## Real should all be real
-        self.l_bce_real = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits(labels=self.real_ex, logits=self.real_adv))
+        # self.l_bce_real = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.real_ex, logits=self.real_adv))
+        self.l_bce_real = tf.nn.softmax_cross_entropy_with_logits(labels=self.real_ex, logits=self.real_adv)
 
         ## Fakes should all be fake
-        self.l_bce_fake = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv))
+        # self.l_bce_fake = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv))
+        self.l_bce_fake = tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv)
 
         ## Fakes accuracy
         # self.accuracy_fake_detection = tf.metrics.accuracy(
@@ -302,14 +302,14 @@ class BaseModel(object):
 
         ## Flip the direction for traning
         ## "maximize the prob. that the fake images are called real"
-        l_bce_fake_one = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits( labels=self.real_ex, logits=self.fake_adv))
+        # l_bce_fake_one = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits( labels=self.real_ex, logits=self.fake_adv))
+        l_bce_fake_one = tf.nn.softmax_cross_entropy_with_logits( labels=self.real_ex, logits=self.fake_adv)
         ## << the fake one is used for segmentation loss & should not pass gradients backwards
         self.l_bce_fake_one = tf.stop_gradient(l_bce_fake_one, name='stop_grad')
 
-        self.bce_real_summary = tf.summary.scalar('l_bce_real', self.l_bce_real)
-        self.bce_fake_summary = tf.summary.scalar('l_bce_fake', self.l_bce_fake)
-        self.bce_fake_one_summary = tf.summary.scalar('l_bce_fake_one', self.l_bce_fake_one)
+        self.bce_real_summary = tf.summary.scalar('l_bce_real', tf.reduce_mean(self.l_bce_real))
+        self.bce_fake_summary = tf.summary.scalar('l_bce_fake', tf.reduce_mean(self.l_bce_fake))
+        self.bce_fake_one_summary = tf.summary.scalar('l_bce_fake_one', tf.reduce_mean(self.l_bce_fake_one))
         # self.fake_detection = tf.summary.scalar('fake_acc', self.accuracy_fake_detection)
         # self.real_detection = tf.summary.scalar('real_acc', self.accuracy_real_detection)
 
@@ -340,10 +340,10 @@ class BaseModel(object):
             self._init_adversarial_loss()
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) + \lambda (a(x_n, s(x_n)), 1)
-            self.seg_loss_op = self.xentropy_loss_op + self.adv_lambda*self.l_bce_fake_one
+            self.seg_loss_op = tf.reduce_mean(self.xentropy_loss_op + self.adv_lambda*self.l_bce_fake_one)
 
             ## \sum_{n=1}^{N} l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)
-            self.adv_loss_op = (self.l_bce_real + self.l_bce_fake) / 2.0
+            self.adv_loss_op = tf.reduce_mean(self.l_bce_real + self.l_bce_fake)
 
             ## ?? slim documentation says to do this for batch_norm layers
             update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -353,7 +353,7 @@ class BaseModel(object):
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) - ...
             ##      \lambda [l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)]
-            self.loss_op = self.xentropy_loss_op - self.adv_lambda*(self.l_bce_real + self.l_bce_fake)
+            self.loss_op = tf.reduce_mean(self.xentropy_loss_op - self.adv_lambda*(self.l_bce_real + self.l_bce_fake))
 
             self.loss_summary = tf.summary.scalar('loss', self.loss_op)
             self.seg_loss_summary = tf.summary.scalar('seg_loss', self.seg_loss_op)
@@ -366,15 +366,16 @@ class BaseModel(object):
         else:
             print 'Using standard x-entropy training'
             self._init_xentropy_loss()
-            self.loss_op = self.xentropy_loss_op
+            self.seg_loss_op = tf.reduce_mean(self.xentropy_loss_op)
+            self.seg_loss_summary = tf.summary.scalar('seg_loss', self.seg_loss_op)
 
+            ## Needed to update batch_norm
             update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
             with tf.control_dependencies(update_ops):
-                self.train_op = self.seg_optimizer.minimize(self.loss_op)
+                self.seg_train_op = self.seg_optimizer.minimize(self.seg_loss_op)
 
-            self.train_op_list = [self.train_op, self.gs_increment]
-
-            self.loss_summary = tf.summary.scalar('loss', self.loss_op)
+            self.train_op_list = [self.seg_train_op, self.gs_increment]
+            self.loss_summary = tf.summary.scalar('seg_loss', self.seg_loss_op)
 
 
 
@@ -420,6 +421,7 @@ class BaseModel(object):
             target_h, target_w = self.test_y_hat.get_shape().as_list()[1:3]
             self.test_output = tf.image.resize_bilinear(tf.test_output, [target_h, target_w])
 
+        ## Just use straight-up objective loss in testing
         self.test_loss = tf.reduce_mean(
             self.objective_fn(y=self.test_y, y_hat=self.test_y_hat))
         self.test_loss = tf.Print(self.test_loss, ['TEST LOSS', self.test_loss])
@@ -459,7 +461,9 @@ class BaseModel(object):
         # self.output_summary = tf.summary.image('y_hat', self.output, max_outputs=3)
         # self.output_summary = tf.summary.image('mask', self.y_hat_sig, max_outputs=4)
 
-        self.summary_op = tf.summary.merge([ self.xentropy_summary, self.loss_summary])
+        self.summary_op = tf.summary.merge([ self.seg_loss_summary,
+            self.xentropy_summary,
+            self.loss_summary])
 
         ## Add in the adverarial training related summaries
         if self.adversarial_training:
@@ -471,9 +475,13 @@ class BaseModel(object):
                 # self.real_detection,
                 self.adv_loss_summary ])
 
+        if self.variational:
+            self.kld_summary = tf.summary.scalar('KLD', tf.reduce_mean(self.KLD))
+            self.zed_summary = tf.summary.histogram('zed', tf.reduce_mean(self.zed, axis=0))
             self.summary_op = tf.summary.merge([
                 self.summary_op,
-                self.seg_loss_summary])
+                self.kld_summary,
+                self.zed_summary])
 
         # self.summary_op = tf.summary.merge_all()
 #/END initializers
