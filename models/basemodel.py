@@ -36,6 +36,7 @@ class BaseModel(object):
         self.learning_rate = learning_rate
         self.input_channel = input_channel
         self.adversarial_training = adversarial_training
+        self.batch_size = self.dataset.batch_size
 
 
         ## Flags for defining the relationship of input to output
@@ -57,8 +58,8 @@ class BaseModel(object):
 
         if self.adversarial_training:
             ## TODO add support for external aversary ("discriminator") net
-            self.adversarial_update_freq = 10
-            self.adversarial_lr = 1e-5
+            self.adversarial_update_freq = 5
+            self.adversarial_lr = 1e-3
             self._adversarial_net_fn = self._adversarial_net
 
         if self.autoencoder:
@@ -97,8 +98,7 @@ class BaseModel(object):
             print 'INFERENCE MODE skipping dataset initializations'
             return
 
-        if self.dataset is not None:
-            self.dataset.set_tf_sess(self.sess)
+        self.dataset.set_tf_sess(self.sess)
 
         if self.log_dir is not None:
             self.summary_writer = tf.summary.FileWriter(self.log_dir, graph=self.sess.graph)
@@ -157,7 +157,10 @@ class BaseModel(object):
             return
 
         print 'Setting up TRAINING mode input ops'
-        self.input_x = self.dataset.image_op
+        if self.dataset.use_feed:
+            self.input_x = tf.placeholder('float32', [self.batch_size, 28, 28, 1], name='in_x')
+        else:
+            self.input_x = self.dataset.image_op
 
         if self.autoencoder:
             print 'AUTOENCODER mode settings input_y = input_x'
@@ -393,7 +396,11 @@ class BaseModel(object):
         ## When we have a test dataset
         print 'Initializing TEST net (sharing weights ON)'
         self.test_dataset.set_tf_sess(self.sess)
-        self.test_x = self.test_dataset.image_op
+
+        if self.test_dataset.use_feed:
+            self.test_x = tf.placeholder('float', [self.batch_size, 28, 28, 1], name='test_x')
+        else:
+            self.test_x = self.test_dataset.image_op
 
         # self.test_y_onehot = tf.one_hot(self.test_y, self.n_classes)
 
@@ -473,15 +480,19 @@ class BaseModel(object):
                 self.bce_fake_summary,
                 # self.fake_detection,
                 # self.real_detection,
-                self.adv_loss_summary ])
+                self.adv_loss_summary])
 
         if self.variational:
-            self.kld_summary = tf.summary.scalar('KLD', tf.reduce_mean(self.KLD))
-            self.zed_summary = tf.summary.histogram('zed', tf.reduce_mean(self.zed, axis=0))
+            with tf.name_scope('variational'):
+                self.kld_summary = tf.summary.scalar('KLD', tf.reduce_mean(self.KLD))
+                self.zed_summary = tf.summary.histogram('zed', tf.reduce_mean(self.zed, axis=0))
+                self.logvar_summary = tf.summary.histogram('logvar', tf.reduce_mean(self.logvar, axis=0))
+
             self.summary_op = tf.summary.merge([
                 self.summary_op,
                 self.kld_summary,
-                self.zed_summary])
+                self.zed_summary,
+                self.logvar_summary])
 
         # self.summary_op = tf.summary.merge_all()
 #/END initializers
@@ -490,10 +501,27 @@ class BaseModel(object):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 #/START methods
-    def write_summary(self, op):
+    def write_summary(self, op, feed_dict=None):
         ## TODO check out if the listy-ness of this one is really needed
-        summary_str = self.sess.run([op])[0]
+        if feed_dict:
+            summary_str = self.sess.run([op], feed_dict=feed_dict)[0]
+        else:
+            summary_str = self.sess.run([op])[0]
+
         self.summary_writer.add_summary(summary_str,
             tf.train.global_step(self.sess, self.global_step))
 
@@ -504,19 +532,33 @@ class BaseModel(object):
             print 'train_step with INFERENCE mode invalid'
             return
 
-        _ = self.sess.run(self.train_op_list)
-        ## Check if we should summarize --- I think it takes a lot of time
-        gs = tf.train.global_step(self.sess, self.global_step)
-        if gs % self.summary_iter == 0:
-            self.write_summary(self.summary_op)
-            self.write_summary(self.adversarial_summary_op)
-            # summary_str = self.sess.run([self.summary_op])[0]
-            # self.summary_writer.add_summary(summary_str,
-            #     tf.train.global_step(self.sess, self.global_step))
+        ## This if / else is just to use MNIST dataset sometimes. Pretty dumb.
+        if self.dataset.use_feed:
+            batch = self.dataset.mnist.train.next_batch(self.batch_size)[0]
+            batch = self.dataset._reshape_batch(batch)
+            # print 'batch:', batch.shape, batch.dtype
+            feed_dict = {self.input_x: batch, self.test_x: batch}
+            _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
+
+            gs = tf.train.global_step(self.sess, self.global_step)
+            if gs % self.summary_iter == 0:
+                self.write_summary(self.summary_op, feed_dict=feed_dict)
+                self.write_summary(self.adversarial_summary_op, feed_dict=feed_dict)
+
+            if self.adversarial_training and gs % self.adversarial_update_freq==0:
+                _ = self.sess.run(self.adversarial_train_list, feed_dict=feed_dict)
+
+        else:
+            _ = self.sess.run(self.train_op_list)
+
+            gs = tf.train.global_step(self.sess, self.global_step)
+            if gs % self.summary_iter == 0:
+                self.write_summary(self.summary_op)
+                self.write_summary(self.adversarial_summary_op)
 
         ## Asynchronous adversary updating
-        if self.adversarial_training and gs % self.adversarial_update_freq==0:
-            _ = self.sess.run(self.adversarial_train_list)
+            if self.adversarial_training and gs % self.adversarial_update_freq==0:
+                _ = self.sess.run(self.adversarial_train_list)
 
 
 
@@ -537,9 +579,14 @@ class BaseModel(object):
         if self.mode == 'INFERENCE':
             print 'test() with INFERENCE mode invalid'
             return
-
-        self.write_summary(self.test_summary_op)
-
+        if self.test_dataset.use_feed:
+            batch = self.dataset.mnist.test.next_batch(self.batch_size)[0]
+            batch = self.dataset._reshape_batch(batch)
+            # print 'batch:', batch.shape, batch.dtype
+            feed_dict = {self.test_x: batch, self.input_x: batch}
+            self.write_summary(self.test_summary_op, feed_dict=feed_dict)
+        else:
+            self.write_summary(self.test_summary_op)
 
 
 

@@ -62,6 +62,7 @@ class GAN(BaseModel):
 
 
         ## TODO: Check args
+        assert adversarial_training == True
 
         super(GAN, self).__init__(
             sess=sess,
@@ -115,76 +116,32 @@ class GAN(BaseModel):
         self._init_saver(self.model_name)
 
 
-    """ Implements a GAN """
+    """ Implements GAN
 
+    Here we don't have an encoder.
+
+    Instead, there is a Generator, and a Descriminator
+    We sample from zed ~ N(0,1), and generate samples from P(X)
+
+    X are our training data
+
+    The discriminator wants to distinguish samples y_hat ~ G(X)
+    from y_hat ~ P(X). That is, the reals from the fakes.
+
+    D(y_hat) is built into basemodel so we force adversarial_training = True
+    """
     def model(self, input_op, reuse=False):
-        self.zed = self.encoder(input_op, reuse=reuse)
+        ## Shape:
+        zed_shape = [self.batch_size, self.zed_dim]
+        zed_sample = tf.random_normal(zed_shape, name='epsilon')
 
-        ## Sample from N(0, 1), conditioned on zed
-
-        y_hat = self.generator(self.zed_sample, reuse=reuse)
+        y_hat = self.generator(zed_sample, reuse=reuse)
 
         return y_hat
 
-    def encoder(self, input_op, reuse=False):
-        # self.batch_size = self.input_x.get_shape()[0]
-        # x_dim = self.input_x.get_shape().as_list()[1]
-        # y_dim = self.input_x.get_shape().as_list()[2]
-        self.x_dim = input_op.get_shape().as_list()[1]
-        self.y_dim = input_op.get_shape().as_list()[2]
-        print '\tx_dim', x_dim
-        print '\ty_dim', y_dim
-        net = slim.convolution2d(input_op,
-            num_outputs = self.n_kernels,
-            kernel_size = 5,
-            stride = 1,
-            padding = 'SAME',
-            scope = 'conv1_0',
-            reuse=reuse)
-        net = slim.batch_norm(net, scope='bn1', reuse=reuse)
-        print '\tconv1_0', net.get_shape()
-        net = slim.convolution2d(net, self.n_kernels, 3, 2, padding='VALID', scope='conv1_1',reuse=reuse)
-        net = slim.batch_norm(net, scope='bn2', reuse=reuse)
-        print '\tconv1_1', net.get_shape()
-
-        net = slim.convolution2d(net, self.n_kernels*2, 3, 1, padding='VALID', scope='conv2_0',reuse=reuse)
-        print '\tconv2_0', net.get_shape()
-        net = slim.convolution2d(net, self.n_kernels*2, 3, 2, padding='VALID', scope='conv2_1',reuse=reuse)
-        net = slim.batch_norm(net, scope='bn3', reuse=reuse)
-        print '\tconv2_1', net.get_shape()
-        if self.bayesian:
-            net = slim.dropout(net, scope='drop1')
-        net = slim.max_pool2d(net, 3, 3, scope='pool3')
-        print '\tpool3', net.get_shape()
-
-        net = slim.convolution2d(net, self.n_kernels*4, 3, 1, padding='VALID', scope='conv3_0',reuse=reuse)
-        print '\tconv3_0', net.get_shape()
-        net = slim.convolution2d(net, self.n_kernels*4, 3, 2, padding='VALID', scope='conv3_1',reuse=reuse)
-        net = slim.batch_norm(net, scope='bn4', reuse=reuse)
-        print '\tconv3_1', net.get_shape()
-        if self.bayesian:
-            net = slim.dropout(net, scope='drop1')
-
-        net = slim.convolution2d(net, self.n_kernels*8, 3, 1, padding='VALID', scope='conv4_0',reuse=reuse)
-        net = slim.batch_norm(net, scope='bn5', reuse=reuse)
-        print '\tconv4_0', net.get_shape()
 
 
-        """ We can be creative with the shape of zed
-
-        It can be a vector, 2-D, or 3-D image with as many kernels as we want.
-        It can be an exterior random variable if we condition zed to be useful
-        for e.g. some external classification.
-        """
-        zed = slim.flatten(net, scope='gan_zed')
-
-        return zed
-
-
-        
-
-
-    def generator(self, zed, reuse=False):
+    def generator(self, zed, reuse=False, training=True):
         net = slim.convolution2d_transpose(zed, self.n_kernels*2, 5, 3, padding='VALID', scope='deconv1_0', reuse=reuse)
         net = slim.batch_norm(net, scope='bn6', reuse=reuse)
         print '\tdeconv1_0', net.get_shape()

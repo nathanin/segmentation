@@ -28,7 +28,7 @@ from models.autoencoder import Autoencoder
 
 # sys.path.insert(0, 'utils')
 # from datasets import ImageMaskDataSet, load_images
-from utils.datasets import ImageDataSet, load_images
+from utils.datasets import ImageDataSet, MNISTDataSet, load_images
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -47,7 +47,7 @@ inference_dir = 'examples/{}/inference'.format(experiment)
 log_dir = 'examples/{}/logs/{}'.format(experiment, itert)
 save_dir = 'examples/{}/snapshots'.format(experiment)
 
-test_iter = 25
+test_iter = 100
 batch_size = 64
 crop_size = 128
 
@@ -58,25 +58,31 @@ with tf.Session(config=config) as sess:
     """ TRAINING MODE
     Dataset used to define batch and input shape
     """
-    dataset = ImageDataSet(feat_dir,
-        image_ext  = image_ext,
-        n_classes  = 2,
-        batch_size = batch_size,
-        crop_size  = crop_size,
-        ratio      = 0.5,
-        capacity   = batch_size*10,
-        min_holding= batch_size*5,
-        threads    = 8)
+    # dataset = ImageDataSet(feat_dir,
+    #     image_ext  = image_ext,
+    #     n_classes  = 2,
+    #     batch_size = batch_size,
+    #     crop_size  = crop_size,
+    #     ratio      = 0.5,
+    #     capacity   = batch_size*10,
+    #     min_holding= batch_size*5,
+    #     threads    = 8)
+    #
+    # test_dataset = ImageDataSet(feat_test_dir,
+    #     image_ext  = image_ext,
+    #     n_classes  = 2,
+    #     batch_size = batch_size,
+    #     crop_size  = crop_size,
+    #     ratio      = 0.5,
+    #     capacity   = batch_size*5,
+    #     min_holding= batch_size,
+    #     threads    = 4)
 
-    test_dataset = ImageDataSet(feat_test_dir,
-        image_ext  = image_ext,
-        n_classes  = 2,
-        batch_size = batch_size,
-        crop_size  = crop_size,
-        ratio      = 0.5,
-        capacity   = batch_size*5,
-        min_holding= batch_size,
-        threads    = 4)
+    dataset = MNISTDataSet('../MNIST_data',
+        batch_size = 64)
+
+    test_dataset = MNISTDataSet('../MNIST_data',
+        batch_size = 64)
 
     network = Autoencoder(
         sess = sess,
@@ -86,12 +92,14 @@ with tf.Session(config=config) as sess:
         save_dir = save_dir,
         log_dir = log_dir,
         load_snapshot = False,
-        learning_rate = 1e-5,
+        learning_rate = 1e-3,
         n_kernels = 16,
         bayesian = False,
         adversarial_training = True,
         variational = True,
-        zed_dim = 64)
+        zed_dim = 8,
+        input_channel = 1,
+        encoder_type = 'small')
 
     ## Has to come after init_op ???
     coord = tf.train.Coordinator()

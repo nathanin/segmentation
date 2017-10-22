@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os, glob, cv2
 
+from tensorflow.examples.tutorials.mnist import input_data
 
 def weight_variable(shape, name=None):
     initial = tf.truncated_normal(shape, stddev=0.01)
@@ -44,7 +45,44 @@ def load_images(paths, batchsize, crop_size):
     return tensor
 
 
+class MNISTDataSet(object):
+    def __init__(self,
+                 source_dir,
+                 batch_size,
+                 n_classes = 10,
+                 mode='TRAIN'):
 
+        self.mnist = input_data.read_data_sets(source_dir)
+        self.has_masks = False
+        self.batch_size = batch_size
+        self.mode = mode
+        self.use_feed = True
+
+        ## Don't need that fancy stuff down there
+
+        # if self.mode=='TRAIN':
+        # self.image_op = tf.placeholder(tf.float32, [self.batch_size, 28, 28, 1], name='MNIST_x')
+        # self.image_op = tf.cast(self.image_op_vec, tf.float32)
+            # self.image_op, self.labels_op = self.mnist.train.next_batch(self.batch_size)
+        # elif self.mode=='TEST':
+        # self.image_op, self.labels_op = self.mnist.test.next_batch(self.batch_size)
+
+        # self.image_op = self._reshape_batch(self.image_op_vec)
+
+    ## Dummy method -
+    def set_tf_sess(self, sess):
+        return
+
+
+    def _reshape_batch(self, vect_x):
+        dims = [self.batch_size, 28, 28, 1]
+        batch = np.reshape(vect_x, dims)
+        return batch
+
+
+    ## Get a mean image to subtract
+    def _compute_mean(self):
+        pass
 
 
 """
@@ -71,7 +109,6 @@ class ImageMaskDataSet(object):
                  threads    = 4,
                  min_holding= 1250):
 
-
         self.image_names = tf.convert_to_tensor(sorted(glob.glob(
         os.path.join(image_dir, '*.'+image_ext) )))
         self.mask_names  = tf.convert_to_tensor(sorted(glob.glob(
@@ -90,6 +127,7 @@ class ImageMaskDataSet(object):
         self.image_ext = image_ext
         self.min_holding = min_holding
         self.has_masks = True
+        self.use_feed = False
 
         self.preprocess_fn = self._preprocessing
 
@@ -189,6 +227,7 @@ class ImageDataSet(object):
         self.image_ext = image_ext
         self.min_holding = min_holding
         self.has_masks = False
+        self.use_feed = False
 
         self.preprocess_fn = self._preprocessing
 
