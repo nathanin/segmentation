@@ -36,6 +36,7 @@ class BaseModel(object):
         self.learning_rate = learning_rate
         self.input_channel = input_channel
         self.adversarial_training = adversarial_training
+        self.batch_size = self.dataset.batch_size
 
 
         ## Flags for defining the relationship of input to output
@@ -56,9 +57,8 @@ class BaseModel(object):
         self.load_snapshot_from = load_snapshot_from if load_snapshot_from else False
 
         if self.adversarial_training:
-            ## TODO add support for external aversary ("discriminator") net
-            self.adversarial_update_freq = 10
-            self.adversarial_lr = 1e-5
+            self.adversarial_update_freq = 5
+            self.adversarial_lr = 1e-3
             self._adversarial_net_fn = self._adversarial_net
 
         if self.autoencoder:
@@ -77,7 +77,7 @@ class BaseModel(object):
 
 
         ## Controls how often we write the summary. Summary writing impacts speed maybe?
-        self.summary_iter = 5
+        self.summary_iter = 25
 
         ## Always needed
         self.init_op = tf.global_variables_initializer()
@@ -97,8 +97,7 @@ class BaseModel(object):
             print 'INFERENCE MODE skipping dataset initializations'
             return
 
-        if self.dataset is not None:
-            self.dataset.set_tf_sess(self.sess)
+        self.dataset.set_tf_sess(self.sess)
 
         if self.log_dir is not None:
             self.summary_writer = tf.summary.FileWriter(self.log_dir, graph=self.sess.graph)
@@ -149,15 +148,23 @@ class BaseModel(object):
 
     """ Instantiate input functions from a dataset """
     def _init_input(self):
+        tensor_dims = [
+            None,
+            self.input_dims[0],
+            self.input_dims[1],
+            self.input_channel ]
+
         if self.mode == 'INFERENCE':
             print 'INFERENCE MODE skipping input'
             ## TODO: deal with variable input shapes; call resize() before inference
-            self.input_x = tf.placeholder('float',
-                [None, self.input_dims, self.input_dims, self.input_channel])
+            self.input_x = tf.placeholder('float', tensor_dims, name='in_x')
             return
 
         print 'Setting up TRAINING mode input ops'
-        self.input_x = self.dataset.image_op
+        if self.dataset.use_feed:
+            self.input_x = tf.placeholder('float32', tensor_dims, name='in_x')
+        else:
+            self.input_x = self.dataset.image_op
 
         if self.autoencoder:
             print 'AUTOENCODER mode settings input_y = input_x'
@@ -188,8 +195,8 @@ class BaseModel(object):
         # self.input_y_onehot = tf.squeeze(tf.one_hot(self.input_y, self.n_classes))
         # print 'input_y_onehot', self.input_y_onehot.get_shape()
 
-        self.xentropy_loss_op = tf.reduce_mean(
-            self.objective_fn( y=self.input_y, y_hat=self.y_hat))
+        # self.xentropy_loss_op = tf.reduce_mean( self.objective_fn( y=self.input_y, y_hat=self.y_hat))
+        self.xentropy_loss_op = self.objective_fn( y=self.input_y, y_hat=self.y_hat)
 
         self.xentropy_summary = tf.summary.scalar('seg_xentropy', self.xentropy_loss_op)
 
@@ -287,29 +294,18 @@ class BaseModel(object):
         self.fake_ex = tf.one_hot(tf.zeros_like(tf.argmax(self.fake_adv, 1)), 2)
 
         ## Real should all be real
-        self.l_bce_real = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits(labels=self.real_ex, logits=self.real_adv))
+        self.l_bce_real = tf.nn.softmax_cross_entropy_with_logits(labels=self.real_ex, logits=self.real_adv)
 
         ## Fakes should all be fake
-        self.l_bce_fake = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv))
+        self.l_bce_fake = tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv)
 
-        ## Fakes accuracy
-        # self.accuracy_fake_detection = tf.metrics.accuracy(
-        #     labels=tf.argmax(self.fake_ex), predictions=tf.argmax(self.fake_adv) )
-        # self.accuracy_real_detection = tf.metrics.accuracy(
-        #     labels=tf.argmax(self.real_ex), predictions=tf.argmax(self.real_adv) )
-
-        ## Flip the direction for traning
-        ## "maximize the prob. that the fake images are called real"
-        l_bce_fake_one = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits( labels=self.real_ex, logits=self.fake_adv))
+        l_bce_fake_one = tf.nn.softmax_cross_entropy_with_logits( labels=self.real_ex, logits=self.fake_adv)
         ## << the fake one is used for segmentation loss & should not pass gradients backwards
         self.l_bce_fake_one = tf.stop_gradient(l_bce_fake_one, name='stop_grad')
 
-        self.bce_real_summary = tf.summary.scalar('l_bce_real', self.l_bce_real)
-        self.bce_fake_summary = tf.summary.scalar('l_bce_fake', self.l_bce_fake)
-        self.bce_fake_one_summary = tf.summary.scalar('l_bce_fake_one', self.l_bce_fake_one)
+        self.bce_real_summary = tf.summary.scalar('l_bce_real', tf.reduce_mean(self.l_bce_real))
+        self.bce_fake_summary = tf.summary.scalar('l_bce_fake', tf.reduce_mean(self.l_bce_fake))
+        self.bce_fake_one_summary = tf.summary.scalar('l_bce_fake_one', tf.reduce_mean(self.l_bce_fake_one))
         # self.fake_detection = tf.summary.scalar('fake_acc', self.accuracy_fake_detection)
         # self.real_detection = tf.summary.scalar('real_acc', self.accuracy_real_detection)
 
@@ -340,10 +336,10 @@ class BaseModel(object):
             self._init_adversarial_loss()
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) + \lambda (a(x_n, s(x_n)), 1)
-            self.seg_loss_op = self.xentropy_loss_op + self.adv_lambda*self.l_bce_fake_one
+            self.seg_loss_op = tf.reduce_mean(self.xentropy_loss_op + self.adv_lambda*self.l_bce_fake_one)
 
             ## \sum_{n=1}^{N} l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)
-            self.adv_loss_op = (self.l_bce_real + self.l_bce_fake) / 2.0
+            self.adv_loss_op = tf.reduce_mean(self.l_bce_real + self.l_bce_fake)
 
             ## ?? slim documentation says to do this for batch_norm layers
             update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -353,7 +349,7 @@ class BaseModel(object):
 
             ## \sum_{n=1}^{N} l_{mce}(s(x_n), y_n) - ...
             ##      \lambda [l_{bce}(a(x_n, y_n), 1) + l_{bce}(a(x_n, s(x_n)), 0)]
-            self.loss_op = self.xentropy_loss_op - self.adv_lambda*(self.l_bce_real + self.l_bce_fake)
+            self.loss_op = tf.reduce_mean(self.xentropy_loss_op - self.adv_lambda*(self.l_bce_real + self.l_bce_fake))
 
             self.loss_summary = tf.summary.scalar('loss', self.loss_op)
             self.seg_loss_summary = tf.summary.scalar('seg_loss', self.seg_loss_op)
@@ -366,15 +362,16 @@ class BaseModel(object):
         else:
             print 'Using standard x-entropy training'
             self._init_xentropy_loss()
-            self.loss_op = self.xentropy_loss_op
+            self.seg_loss_op = tf.reduce_mean(self.xentropy_loss_op)
+            self.seg_loss_summary = tf.summary.scalar('seg_loss', self.seg_loss_op)
 
+            ## Needed to update batch_norm
             update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
             with tf.control_dependencies(update_ops):
-                self.train_op = self.seg_optimizer.minimize(self.loss_op)
+                self.seg_train_op = self.seg_optimizer.minimize(self.seg_loss_op)
 
-            self.train_op_list = [self.train_op, self.gs_increment]
-
-            self.loss_summary = tf.summary.scalar('loss', self.loss_op)
+            self.train_op_list = [self.seg_train_op, self.gs_increment]
+            self.loss_summary = tf.summary.scalar('seg_loss', self.seg_loss_op)
 
 
 
@@ -392,7 +389,11 @@ class BaseModel(object):
         ## When we have a test dataset
         print 'Initializing TEST net (sharing weights ON)'
         self.test_dataset.set_tf_sess(self.sess)
-        self.test_x = self.test_dataset.image_op
+
+        if self.test_dataset.use_feed:
+            self.test_x = tf.placeholder('float', [self.batch_size, 28, 28, 1], name='test_x')
+        else:
+            self.test_x = self.test_dataset.image_op
 
         # self.test_y_onehot = tf.one_hot(self.test_y, self.n_classes)
 
@@ -420,9 +421,10 @@ class BaseModel(object):
             target_h, target_w = self.test_y_hat.get_shape().as_list()[1:3]
             self.test_output = tf.image.resize_bilinear(tf.test_output, [target_h, target_w])
 
+        ## Just use straight-up objective loss in testing
         self.test_loss = tf.reduce_mean(
             self.objective_fn(y=self.test_y, y_hat=self.test_y_hat))
-        self.test_loss = tf.Print(self.test_loss, ['TEST LOSS', self.test_loss])
+        self.test_loss = tf.Print(self.test_loss, ['TEST LOSS', self.test_loss, self.global_step])
 
         self.test_y_hat_summary = tf.summary.image('test_out', self.test_output, max_outputs=3)
         self.test_y_summary = tf.summary.image('test_y', tf.cast(self.test_y, tf.float32), max_outputs=3)
@@ -434,81 +436,74 @@ class BaseModel(object):
         ## all the things associated with it also
         self.test_summary_op = tf.summary.merge([
             self.test_y_hat_summary,
-            self.test_y_summary,
+            # self.test_y_summary,
             self.test_x_summary,
             self.test_loss_summary ])
 
 
 
 
-    """ Initializer for summary ops
-
-    Adds some generic summary ops which we're pretty sure can always be called
-    creates self.summary_op
-
-    The previous initializers should create their own summary ops
-    And this function should be called right before init_op
-    """
     def _init_summary_ops(self):
-        if self.mode == 'INFERENCE':
-            print 'INFERENCE MODE skip _init_summary_ops()'
-            return
 
-        # self.gt_summary = tf.summary.image('input_y', tf.cast(self.input_y, tf.float32), max_outputs=3)
-        # self.input_summary = tf.summary.image('input_x', self.input_x, max_outputs=3)
-        # self.output_summary = tf.summary.image('y_hat', self.output, max_outputs=3)
-        # self.output_summary = tf.summary.image('mask', self.y_hat_sig, max_outputs=4)
+        raise Exception('USING DEPRECIATED SUMMARY CREATOR. The new way is to define summary ops in child classes')
 
-        self.summary_op = tf.summary.merge([ self.xentropy_summary, self.loss_summary])
-
-        ## Add in the adverarial training related summaries
-        if self.adversarial_training:
-            self.adversarial_summary_op = tf.summary.merge([
-                self.bce_fake_one_summary,
-                self.bce_real_summary,
-                self.bce_fake_summary,
-                # self.fake_detection,
-                # self.real_detection,
-                self.adv_loss_summary ])
-
-            self.summary_op = tf.summary.merge([
-                self.summary_op,
-                self.seg_loss_summary])
-
-        # self.summary_op = tf.summary.merge_all()
 #/END initializers
 
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 #/START methods
-    def write_summary(self, op):
+    def write_summary(self, op, feed_dict=None):
         ## TODO check out if the listy-ness of this one is really needed
-        summary_str = self.sess.run([op])[0]
+        if feed_dict:
+            summary_str = self.sess.run([op], feed_dict=feed_dict)[0]
+        else:
+            summary_str = self.sess.run([op])[0]
+
         self.summary_writer.add_summary(summary_str,
             tf.train.global_step(self.sess, self.global_step))
 
 
 
     def train_step(self):
-        if self.mode == 'INFERENCE':
-            print 'train_step with INFERENCE mode invalid'
-            return
 
-        _ = self.sess.run(self.train_op_list)
-        ## Check if we should summarize --- I think it takes a lot of time
-        gs = tf.train.global_step(self.sess, self.global_step)
-        if gs % self.summary_iter == 0:
-            self.write_summary(self.summary_op)
-            self.write_summary(self.adversarial_summary_op)
-            # summary_str = self.sess.run([self.summary_op])[0]
-            # self.summary_writer.add_summary(summary_str,
-            #     tf.train.global_step(self.sess, self.global_step))
+        if self.dataset.use_feed:
+            batch = self.dataset.mnist.train.next_batch(self.batch_size)[0]
+            batch = self.dataset._reshape_batch(batch)
+            feed_dict = {self.input_x: batch}
+            _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
+
+            gs = tf.train.global_step(self.sess, self.global_step)
+            if gs % self.summary_iter == 0:
+                self.write_summary(self.summary_op, feed_dict=feed_dict)
+
+            if self.adversarial_training and gs % self.adversarial_update_freq==0:
+                _ = self.sess.run(self.adversarial_train_list, feed_dict=feed_dict)
+
+        else:
+            _ = self.sess.run(self.train_op_list)
+
+            gs = tf.train.global_step(self.sess, self.global_step)
+            if gs % self.summary_iter == 0:
+                self.write_summary(self.summary_op)
 
         ## Asynchronous adversary updating
-        if self.adversarial_training and gs % self.adversarial_update_freq==0:
-            _ = self.sess.run(self.adversarial_train_list)
+            if self.adversarial_training and gs % self.adversarial_update_freq==0:
+                _ = self.sess.run(self.adversarial_train_list)
 
 
 
@@ -529,9 +524,14 @@ class BaseModel(object):
         if self.mode == 'INFERENCE':
             print 'test() with INFERENCE mode invalid'
             return
-
-        self.write_summary(self.test_summary_op)
-
+        if self.test_dataset.use_feed:
+            batch = self.dataset.mnist.test.next_batch(self.batch_size)[0]
+            batch = self.dataset._reshape_batch(batch)
+            # print 'batch:', batch.shape, batch.dtype
+            feed_dict = {self.test_x: batch, self.input_x: batch}
+            self.write_summary(self.test_summary_op, feed_dict=feed_dict)
+        else:
+            self.write_summary(self.test_summary_op)
 
 
 

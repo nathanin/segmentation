@@ -8,4 +8,5 @@ examples/deconv/
 examples/fcn/
 examples/unet/
 examples/auto/
+examples/gan/
 prototxt/
