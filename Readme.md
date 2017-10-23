@@ -14,9 +14,11 @@ Figure 1. The competing standards conundrum.
 - FCN-{32, 16, 8}s ([Long et al, 2014](https://people.eecs.berkeley.edu/~jonlong/long_shelhamer_fcn.pdf))
 - U-Net ([Ronneberger et al, 2015](https://arxiv.org/pdf/1505.04597.pdf))
 - Autoencoder, multi-scale autoencoder with latent vector (squishes signal through 1D bottleneck)
+  - Adversarial autoencoder ([Makzani & Frey, 2015](https://arxiv.org/pdf/1511.05644.pdf))
   - Optional variational autoencoder mode (testing)
   - Next: conditional variational autoencoders
-- Generative Adversarial Networks ([Makhzani & Frey, 2017](https://arxiv.org/pdf/1706.00531.pdf), [Goodfellow et al, 2014](http://papers.nips.cc/paper/5423-generative-adversarial-nets.pdf), [Radford & Metz, 2017](https://arxiv.org/pdf/1511.06434.pdf)) (developing next)
+- Generative Adversarial Networks ([Makhzani & Frey, 2017](https://arxiv.org/pdf/1706.00531.pdf), [Goodfellow et al, 2014](http://papers.nips.cc/paper/5423-generative-adversarial-nets.pdf), [Radford & Metz, 2017](https://arxiv.org/pdf/1511.06434.pdf))
+  - InfoGAN ([Chen et al, 2016](http://papers.nips.cc/paper/6399-infogan-interpretable-representation-learning-by-information-maximizing-generative-adversarial-nets.pdf))
 - Autoencoder mode for all models (separate from standalone autoencoder)
 - Adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
 - Bayesian mode for all models ([Kendall & Gal, 2017](https://arxiv.org/pdf/1703.04977.pdf))
@@ -35,7 +37,6 @@ For now, recommend to expand `ImageMaskDataSet` and `ImageDataSet` as necessary.
 But there is threading for the I/O and potential for custom on-the-fly augmentation with tf, so that's still nice.
 
 As-is, one can implement a training / application pipeline as so:
-
 ```
 import tensorflow as tf
 from models.unet import UNetModel
@@ -70,6 +71,7 @@ data/
     000.png
     001.png
 ```
+
 
 ### Notes
 - All the ugly stuff is hidden in the `BaseModel` class with functions and hyperparameters for training, saving, tensorboard and inference

@@ -37,7 +37,7 @@ class Autoencoder(BaseModel):
         dataset = None,
         save_dir = None,
         bayesian = False,
-        input_dims = 512,
+        input_dims = [256, 256],
         mode = 'TRAINING',
         input_channel = 3,
         test_dataset = None,
@@ -110,8 +110,9 @@ class Autoencoder(BaseModel):
 
         ## Ammend training and testing ops if we're doing variational mode
         if self.variational:
-            self._add_variational_loss()
-        #     self._make_testing_variational()
+            with tf.name_scope('variational') as scope:
+                self._add_variational_loss()
+                self._make_testing_variational()
 
         ## Summary, saver & initialize
         self._init_summary_ops()
@@ -120,6 +121,14 @@ class Autoencoder(BaseModel):
         self._init_saver(self.model_name)
 
 
+
+    """ Call dream() to generate y_hat ~ p(z)
+
+    Use summary writer to output.
+    """
+    def dream(self):
+        ## Shouldn't require any feeding
+        self.write_summary(self.dream_op_list)
 
 
     """ Add the KL term to seg_loss_op """
@@ -139,17 +148,24 @@ class Autoencoder(BaseModel):
             self.seg_loss_op = tf.reduce_mean(self.xentropy_loss_op + self.KLD)
 
 
-
-
     """ Add variational daydream op
     The new op should sample from normal distribution and compute y_hat
+
+    # creates self.y_hat_dream
     """
     def _make_testing_variational():
         epsilon = tf.random_normal([self.batch_size, self.zed_dim], name='epsilon')
-        pass
+
+        if self.encoder_type == 'small':
+            self.y_hat_dream = self.small_decoder(epsilon, reuse=True, training=False)
+        else:
+            self.y_hat_dream = self.decoder(epsilon, reuse=True, training=False)
+
+        self.y_hat_dream_summary = tf.summary.image('dream', self.y_hat_dream, max_outputs=3)
+        self.dream_op_list = [self.y_hat_dream_summary]
 
 
-
+    """ Small adversarial conv net for MNIST """
     def _small_adversary(self, tensor_in, reuse=False, training=True):
         adv_kernels = 8
         with tf.name_scope('Adversary') as scope:
@@ -169,8 +185,6 @@ class Autoencoder(BaseModel):
         return decision
 
 
-
-
     """ Implement the autoencoder
 
     An autoencoder squishes the signal through some vector space, zed,
@@ -188,7 +202,6 @@ class Autoencoder(BaseModel):
             self.zed = self.multiscale_encoder(input_op, reuse=reuse, training=training)
         elif self.encoder_type == 'small':
             self.zed = self.small_stacked_encoder(input_op, reuse=reuse, training=training)
-
 
         ## Get mean and std from z and sample from normal distribution
         if self.variational:
@@ -215,8 +228,17 @@ class Autoencoder(BaseModel):
         else:
             y_hat = self.decoder(self.zed, reuse=reuse, training=training)
 
-
         return y_hat
+
+## -----------------------------------------------------------------------------
+##
+##
+##
+##                    Below are some ConvNet configurations
+##
+##
+##
+## -----------------------------------------------------------------------------
 
 
     """ Small, for MNIST """
@@ -264,9 +286,7 @@ class Autoencoder(BaseModel):
         return zed
 
 
-
-
-
+    """ Small sized convnet for MNIST """
     def small_decoder(self, zed, reuse=False, training=True):
         print 'SMALL DECODER'
         ## Shape back
@@ -293,8 +313,6 @@ class Autoencoder(BaseModel):
         return deconv_out
 
 
-
-    
 
     """ Stacked convolutions
 
@@ -359,8 +377,6 @@ class Autoencoder(BaseModel):
         print '\tflatten', enc_flatten.get_shape()
         print '\tzed', zed.get_shape()
         return zed
-
-
 
 
 
