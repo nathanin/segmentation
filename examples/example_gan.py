@@ -64,7 +64,7 @@ with tf.Session(config=config) as sess:
         save_dir = save_dir,
         input_dims = [28,28],
         load_snapshot = False,
-        learning_rate = 1e-5,
+        learning_rate = 1e-3,
         adversarial_training = True)
 
     ## Has to come after init_op ???

@@ -76,7 +76,7 @@ class GAN(BaseModel):
 
         with tf.name_scope('ConvDeconv') as scope:
             print 'Instantiating GAN'
-            self.y_hat = self.model(reuse=False)
+            self.y_hat = self.model(reuse=False, training=True)
 
         ## Generics
         with tf.name_scope('loss') as scope:
@@ -158,13 +158,14 @@ class GAN(BaseModel):
         ## Fakes should all be fake
         ## E_{x ~ p(z)}[log 1 - D(G(z))]
         self.l_bce_fake = tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv)
+        self.l_bce_fake_gen = tf.nn.softmax_cross_entropy_with_logits(labels=self.real_ex, logits=self.fake_adv)
         # self.l_bce_fake_nograd = tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv_nograd)
 
         ## Losses are the same; but gradients should flow differently
         ## adv_loss should only flow back to update D(~)
         self.adv_loss_op = tf.reduce_mean(self.l_bce_real + self.l_bce_fake)
         ## gen_loss should only flow back to update G(~)
-        self.gen_loss_op = tf.reduce_mean(self.l_bce_fake)
+        self.gen_loss_op = tf.reduce_mean(self.l_bce_fake_gen)
 
         self.adv_loss_op = tf.Print(self.adv_loss_op, ['Adv Loss', self.adv_loss_op, self.global_step])
         self.gen_loss_op = tf.Print(self.gen_loss_op, ['Gen Loss', self.gen_loss_op, self.global_step])
