@@ -105,10 +105,13 @@ class GAN(BaseModel):
 
         # print 'batch_x', batch_x.shape, batch_x.dtype, batch_x.min(), batch_x.max()
 
-        _ = self.sess.run(self.gs_increment)
-        _ = self.sess.run(self.adv_train_op, feed_dict=feed_dict)
-        _ = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
-        _ = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
+        _, _, D_loss, G_loss, _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
+        # _ = self.sess.run(self.gs_increment)
+        # _ = self.sess.run(self.adv_train_op, feed_dict=feed_dict)
+        # _ = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
+        # _ = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
+
+        print 'D loss: {} G loss: {}'.format(D_loss, G_loss)
 
         self.write_summary(self.summary_op, feed_dict=feed_dict)
 
@@ -196,14 +199,14 @@ class GAN(BaseModel):
         self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op, var_list=self.d_vars)
         self.gen_train_op = self.gen_optimizer.minimize(self.gen_loss_op, var_list=self.g_vars)
 
-        # self.train_op_list = [self.gen_train_op, self.adv_train_op, self.gs_increment]
+        self.train_op_list = [self.adv_train_op, self.gen_train_op,
+            self.adv_loss_op, self.gen_loss_op, self.gs_increment]
         # self.adversarial_train_list = [self.adv_train_op]
 
         # self.bce_real_summary = tf.summary.scalar('l_bce_real', tf.reduce_mean(self.l_bce_real))
         # self.bce_fake_summary = tf.summary.scalar('l_bce_fake', tf.reduce_mean(self.l_bce_fake))
         self.adv_loss_summary = tf.summary.scalar('adv_loss', self.adv_loss_op)
         self.gen_loss_summary = tf.summary.scalar('gen_loss', self.gen_loss_op)
-        # self.train_op_list = [self.train_op, self.gs_increment]
 
 
 

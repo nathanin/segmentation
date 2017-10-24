@@ -475,17 +475,18 @@ class BaseModel(object):
 
 
     def train_step(self):
+        raise Exception('ERROR depreciated train_step(). Implement train_step in child')
 
-        if self.dataset.use_feed:
-            batch = self.dataset.mnist.train.next_batch(self.batch_size)[0]
-            batch = self.dataset._reshape_batch(batch)
-            feed_dict = {self.input_x: batch}
-            _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
-            self.write_summary(self.summary_op, feed_dict=feed_dict)
-
-        else:
-            _ = self.sess.run(self.train_op_list)
-            self.write_summary(self.summary_op)
+        # if self.dataset.use_feed:
+        #     batch = self.dataset.mnist.train.next_batch(self.batch_size)[0]
+        #     batch = self.dataset._reshape_batch(batch)
+        #     feed_dict = {self.input_x: batch}
+        #     _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
+        #     self.write_summary(self.summary_op, feed_dict=feed_dict)
+        #
+        # else:
+        #     _ = self.sess.run(self.train_op_list)
+        #     self.write_summary(self.summary_op)
 
 
 
