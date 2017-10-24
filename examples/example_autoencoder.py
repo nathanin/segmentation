@@ -114,7 +114,7 @@ with tf.Session(config=config) as sess:
     Insert testing / snapshotting however you want.
     """
     tstart = time.time()
-    for _ in range(50):
+    for _ in range(150):
         t_outer_loop = time.time()
         for k in range(1000):
             t_inner_loop = time.time()
