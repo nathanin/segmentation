@@ -296,7 +296,7 @@ class BaseModel(object):
 
         l_bce_fake_one = tf.nn.softmax_cross_entropy_with_logits( labels=self.real_ex, logits=self.fake_adv)
         ## << the fake one is used for segmentation loss & should not pass gradients backwards
-        self.l_bce_fake_one = tf.stop_gradient(l_bce_fake_one, name='stop_grad')
+        # self.l_bce_fake_one = tf.stop_gradient(l_bce_fake_one, name='stop_grad')
 
         self.bce_real_summary = tf.summary.scalar('l_bce_real', tf.reduce_mean(self.l_bce_real))
         self.bce_fake_summary = tf.summary.scalar('l_bce_fake', tf.reduce_mean(self.l_bce_fake))

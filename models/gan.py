@@ -98,7 +98,6 @@ class GAN(BaseModel):
         self._init_saver(self.model_name)
 
 
-
     def train_step(self):
         batch_x, batch_labels = self.dataset.mnist.train.next_batch(self.batch_size)
         batch_x = self.dataset._reshape_batch(batch_x)
