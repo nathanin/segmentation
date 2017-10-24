@@ -36,7 +36,8 @@ class GAN(BaseModel):
         n_kernels = 32,
         autoencoder = True,  ## True just for input reasons; don't really need
         adversarial_training = True,  ## Always true
-        zed_dim = 64):
+        zed_dim = 64,
+        label_dim = None):
 
 
         ## TODO: Check args
@@ -69,6 +70,7 @@ class GAN(BaseModel):
         self.n_kernels = n_kernels
         self.zed_dim = zed_dim
         self.adversarial_lr = 2e-4
+        self.label_dim = label_dim
 
         self._generator_fn = self._generator
         self._adversarial_net_fn = self._discriminator
@@ -101,7 +103,7 @@ class GAN(BaseModel):
         batch_x, batch_labels = self.dataset.mnist.train.next_batch(self.batch_size)
         batch_x = self.dataset._reshape_batch(batch_x)
         batch_z = np.random.uniform(-1, 1, [self.batch_size, self.zed_dim]).astype(np.float32)
-        feed_dict = {self.input_x: batch_x, self.zed_sample: batch_z}
+        feed_dict = {self.input_x: batch_x, self.label_in: batch_labels, self.zed_sample: batch_z}
 
         # print 'batch_x', batch_x.shape, batch_x.dtype, batch_x.min(), batch_x.max()
 
@@ -124,6 +126,8 @@ class GAN(BaseModel):
         self.real_adv_summary = tf.summary.histogram('real_adv', self.real_adv)
         self.fake_adv_summary = tf.summary.histogram('fake_adv', self.fake_adv)
         self.zed_sample_summary = tf.summary.histogram('z_sample', self.zed_sample)
+        if self.label_in:
+            self.label_in_summary = tf.summary.histogram('label_hist', tf.argmax(self.label_in, 1))
 
         # for grad, var in self.grads:
         #     tf.summary.histogram(var.name + '/gradient', grad)
@@ -153,12 +157,18 @@ class GAN(BaseModel):
         self.gen_optimizer = tf.train.AdamOptimizer(self.learning_rate, beta1=0.5, name='genAdam')
         self.adversarial_optimizer = tf.train.AdamOptimizer(self.adversarial_lr, beta1=0.5, name='descAdam')
 
+        if self.label_dim:
+            self.label_in = tf.placeholder('float32', [self.batch_size, 1])
+            self.label_in = tf.one_hot(self.label_in)
+        else:
+            self.label_in = None
+
         with tf.variable_scope('Adversarial') as scope:
             print 'Adversarial x ~ p(data)'
-            self.real_adv, self.real_adv_logit = self._adversarial_net_fn(self.input_x, reuse=False)
+            self.real_adv, self.real_adv_logit = self._adversarial_net_fn(self.input_x, self.label_in, reuse=False)
 
             print 'Adversarial x ~ G(z)'
-            self.fake_adv, self.fake_adv_logit = self._adversarial_net_fn(self.y_hat, reuse=True)
+            self.fake_adv, self.fake_adv_logit = self._adversarial_net_fn(self.y_hat, self.label_in, reuse=True)
 
         ## Separate variables for the optimizers to use - no more tf.stop_gradient !!
         ## https://github.com/carpedm20/DCGAN-tensorflow/blob/master/model.py
@@ -302,32 +312,36 @@ class GAN(BaseModel):
 
         return deconv_out
 
-
-
     """ Lightweight for MNIST dataset
     architecture from the InfoGAN paper
     """
-    def _discriminator(self, image, reuse=False, training=True):
-        with slim.arg_scope([slim.convolution2d],
+    def _discriminator(self, image, label=None, reuse=False, training=True):
+        with slim.arg_scope([slim.convolution2d, slim.fully_connected],
             weights_initializer=tf.truncated_normal,
             normalizer_fn=slim.batch_norm,
             normalizer_params={'is_training': training, 'decay': 0.95, 'updates_collections': None},
             activation_fn=self.leaky_relu,
             reuse=reuse):
+            if label:
+                image = self.concat_tensor_label(image, label)
+                print '\t image concat', image.get_shape()
             conv1 = slim.convolution2d(image, 64, 4, 2, padding='SAME', scope='dis_conv1')
-            conv2 = slim.convolution2d(conv1, 128, 4, 2, padding='SAME', scope='dis_conv2')
-            conv3 = slim.convolution2d(conv2, 256, 4, 2, padding='SAME', scope='dis_conv3')
-            conv3_flat = slim.flatten(conv3)
 
-            adv = slim.fully_connected(conv3_flat, 1, scope='dis_out')
+            if label:
+                conv1 = self.concat_tensor_label(conv1, label)
+                print '\t conv1 concat', conv1.get_shape()
+            conv2 = slim.convolution2d(conv1, 128, 4, 2, padding='SAME', scope='dis_conv2')
+            conv2_flat = slim.flatten(conv2)
+
+            fc1 = slim.fully_connected(conv2_flat, 1024, scope='dis_fc1')
+            adv = slim.fully_connected(fc1, 1, scope='dis_out', activation_fn=None, normalizer_fn=None)
             adv_sig = tf.nn.sigmoid(adv)
 
         print 'gan/_discriminator_small():'
         print '\t image', image.get_shape()
         print '\t conv1', conv1.get_shape()
         print '\t conv2', conv2.get_shape()
-        print '\t conv3', conv3.get_shape()
-        print '\t conv3_flat', conv3_flat.get_shape()
+        print '\t conv2_flat', conv2_flat.get_shape()
         print '\t adv', adv.get_shape()
 
         return adv_sig, adv
@@ -338,3 +352,13 @@ class GAN(BaseModel):
         features = tf.convert_to_tensor(features)
         alpha = tf.convert_to_tensor(alpha)
         return tf.maximum(alpha * features, features)
+
+
+    def concat_tensor_label(self, image, label):
+        label = tf.reshape(label, [self.batch_size, 1, 1, self.label_dim])
+        x_shapes = image.get_shape()
+        y_shapes = label.get_shape()
+
+        ## [batch, h, w, label_dim]
+        return tf.concat([
+        image, label*tf.ones([x_shapes[0], x_shapes[1], x_shapes[2], y_shapes[3]])], 3)
