@@ -18,8 +18,8 @@ Figure 1. The competing standards conundrum.
   - Optional variational autoencoder mode (testing)
   - Next: conditional variational autoencoders
 - Generative Adversarial Networks ([Makhzani & Frey, 2017](https://arxiv.org/pdf/1706.00531.pdf), [Goodfellow et al, 2014](http://papers.nips.cc/paper/5423-generative-adversarial-nets.pdf), [Radford & Metz, 2017](https://arxiv.org/pdf/1511.06434.pdf))
-  - InfoGAN ([Chen et al, 2016](http://papers.nips.cc/paper/6399-infogan-interpretable-representation-learning-by-information-maximizing-generative-adversarial-nets.pdf))
-  - Credit to [carpedm20's implementation](https://github.com/carpedm20/DCGAN-tensorflow)
+  - InfoGAN ([Chen et al, 2016](http://papers.nips.cc/paper/6399-infogan-interpretable-representation-learning-by-information-maximizing-generative-adversarial-nets.pdf); [openai implementation](https://github.com/openai/InfoGAN))
+  - Credit to [carpedm20's GAN code](https://github.com/carpedm20/DCGAN-tensorflow)
 - Autoencoder mode for all models (separate from standalone autoencoder)
 - Adversarial training for all models ([Luc et al, 2016](https://arxiv.org/pdf/1611.08408.pdf))
 - Bayesian mode for all models ([Kendall & Gal, 2017](https://arxiv.org/pdf/1703.04977.pdf))

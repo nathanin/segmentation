@@ -56,18 +56,18 @@ class BaseModel(object):
 
         self.load_snapshot_from = load_snapshot_from if load_snapshot_from else False
 
-        if self.autoencoder:
-            print 'AUTOENCODER MODE'
-            print '\tSetting objective function to MSE'
-            print '\tSetting n_classes to input_channel ({})'.format(input_channel)
-            self.objective_fn = lambda y,y_hat: tf.losses.mean_squared_error(
-                labels=y, predictions=y_hat)
-            self.n_classes = self.input_channel
-        else:
-            print 'Setting objective function to Softmax x-entropy'
-            nested_yprep_fn = lambda y: tf.squeeze(tf.one_hot(y, self.n_classes))
-            self.objective_fn = lambda y,y_hat: tf.nn.softmax_cross_entropy_with_logits(
-                labels=nested_yprep_fn(y), logits=y_hat)
+        # if self.autoencoder:
+        #     print 'AUTOENCODER MODE'
+        #     print '\tSetting objective function to MSE'
+        #     print '\tSetting n_classes to input_channel ({})'.format(input_channel)
+        #     self.objective_fn = lambda y,y_hat: tf.losses.mean_squared_error(
+        #         labels=y, predictions=y_hat)
+        #     self.n_classes = self.input_channel
+        # else:
+        #     print 'Setting objective function to Softmax x-entropy'
+        #     nested_yprep_fn = lambda y: tf.squeeze(tf.one_hot(y, self.n_classes))
+        #     self.objective_fn = lambda y,y_hat: tf.nn.softmax_cross_entropy_with_logits(
+        #         labels=nested_yprep_fn(y), logits=y_hat)
         ## /end if/else
 
 

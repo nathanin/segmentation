@@ -22,9 +22,10 @@ https://github.com/carpedm20/DCGAN-tensorflow
 GAN's aren't easy to train..
 """
 
-class GAN(BaseModel):
+class InfoGAN(BaseModel):
     def __init__(self,
         sess = None,
+        n_classes = 2,
         log_dir = None,
         dataset = None,
         save_dir = None,
@@ -37,28 +38,33 @@ class GAN(BaseModel):
         load_snapshot_from = None,
         n_kernels = 32,
         autoencoder = True,  ## True just for input reasons; don't really need
+        adversarial_training = True,  ## Always true
         zed_dim = 64,
         generator_fc = 512,
         discriminator_fc = 512,
-        label_dim = None):
+        label_dim = None,
+        c_discrete = None,
+        c_ctns = None):
 
 
         ## TODO: Check args
+        assert adversarial_training == True
 
-        super(GAN, self).__init__(
+        super(InfoGAN, self).__init__(
             sess=sess,
             mode=mode,
             log_dir=log_dir,
             dataset=dataset,
             bayesian=bayesian,
             save_dir=save_dir,
+            n_classes=n_classes,
             input_dims=input_dims,
             autoencoder=autoencoder,
             input_channel=input_channel,
             load_snapshot=load_snapshot,
             learning_rate=learning_rate,
             load_snapshot_from=load_snapshot_from,
-            adversarial_training=True)
+            adversarial_training=adversarial_training)
 
 
         self.model_name = 'GAN'
@@ -280,15 +286,13 @@ class GAN(BaseModel):
     """
     def _generator(self, zed, label=None, reuse=False, training=True):
         ## 7 * 7 * 128 = 6272
+        ## 7 * 7 * 1024 = 50176
+        ## 7 * 7 * 512 = 25088
         with tf.variable_scope('Generator') as scope:
-            img_h_4 = self.input_dims[0]//4
-            img_w_4 = self.input_dims[1]//4
-            projection_dim = self.n_kernels*2*img_h_4*img_w_4 ## 6272
             if reuse:
                 scope.reuse_variables()
             with slim.arg_scope([slim.fully_connected, slim.convolution2d_transpose],
                 weights_initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02),
-                biases_initializer=tf.constant_initializer(0.0),
                 normalizer_fn=slim.batch_norm,
                 normalizer_params={'is_training': training, 'decay': 0.9,
                     'updates_collections': None,
@@ -299,25 +303,23 @@ class GAN(BaseModel):
                 if self.label_dim:
                     zed = tf.concat([zed, label], axis=1)
                     label_tensor = tf.reshape(label, [self.batch_size, 1, 1, self.label_dim])
-                zed_project = slim.fully_connected(zed, 1024, scope='gen_zed_project')
+                zed_project = slim.fully_connected(zed, 512, scope='gen_zed_project')
 
-                if self.label_dim:
-                    zed_project = tf.concat([zed_project, label], axis=1)
-                fc1 = slim.fully_connected(zed_project, projection_dim, scope='gen_fc1')
-                g0 = tf.reshape(fc1, [-1, img_h_4, img_w_4, self.n_kernels*2], name='gen_fc1_reshape')
+                # if self.label_dim:
+                #     zed_project = tf.concat([zed_project, label], axis=1)
+                fc1 = slim.fully_connected(zed_project, 64*7*7, scope='gen_fc1')
+                g0 = tf.reshape(fc1, [-1, 7, 7, 64], name='gen_fc1_reshape')
 
-                if self.label_dim:
-                    g0 = self.concat_tensor_label(g0, label_tensor)
-                g1 = slim.convolution2d_transpose(g0, self.n_kernels, 5, 2, padding='SAME', scope='gen_deconv1',)
-                    # weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False)) ## 14 x 14
+                # if self.label_dim:
+                #     g0 = self.concat_tensor_label(g0, label_tensor)
+                g1 = slim.convolution2d_transpose(g0, 64, 4, 2, padding='SAME', scope='gen_deconv1',
+                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False)) ## 14 x 14
 
-                if self.label_dim:
-                    g1 = self.concat_tensor_label(g1, label_tensor)
-                deconv_out = slim.convolution2d_transpose(g1, 1, 5, 2, padding='SAME',
-                    # weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False), ## 14 x 14
-                    biases_initializer = None,
-                    scope='gen_deconv_out', activation_fn=None) ## 28 x 28
-                deconv_out = tf.nn.tanh(deconv_out)
+                # if self.label_dim:
+                #     g1 = self.concat_tensor_label(g1, label_tensor)
+                deconv_out = slim.convolution2d_transpose(g1, 1, 4, 2, padding='SAME',
+                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False), ## 14 x 14
+                    scope='gen_deconv_out', activation_fn=tf.nn.tanh) ## 28 x 28
 
         print 'gan/_generator_small():'
         print '\t zed', zed.get_shape()
@@ -341,7 +343,6 @@ class GAN(BaseModel):
 
             with slim.arg_scope([slim.convolution2d, slim.fully_connected],
                 weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-                biases_initializer=tf.constant_initializer(0.0),
                 normalizer_fn=slim.batch_norm,
                 normalizer_params={'is_training': training, 'decay': 0.9,
                     'updates_collections': None,
@@ -354,22 +355,20 @@ class GAN(BaseModel):
                     print '\t DISCRIMINATOR LABEL', label.get_shape()
                     image = self.concat_tensor_label(image, label)
                     print '\t image concat', image.get_shape()
-                conv0 = slim.convolution2d(image, 16, 5, 2,
-                    padding='SAME', scope='dis_conv0',)
-                    # weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
-                    # normalizer_fn=None)
+                conv0 = slim.convolution2d(image, 11, 5, 2, padding='SAME', scope='dis_conv0',
+                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False),
+                    normalizer_fn=None)
 
-                if self.label_dim:
-                    conv0 = self.concat_tensor_label(conv0, label)
-                    print '\t conv0 concat', conv0.get_shape()
-                conv1 = slim.convolution2d(conv0, 64, 5, 2,
-                    padding='SAME', scope='dis_conv1',)
-                    # weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False))
+                # if self.label_dim:
+                #     conv0 = self.concat_tensor_label(conv0, label)
+                #     print '\t conv0 concat', conv0.get_shape()
+                conv1 = slim.convolution2d(conv0, 24, 5, 2, padding='SAME', scope='dis_conv1',
+                    weights_initializer=tf.contrib.layers.xavier_initializer(uniform=False))
                 conv1_flat = slim.flatten(conv1)
 
-                if self.label_dim:
-                    conv1_flat = tf.concat([conv1_flat, label], axis=1)
-                fc1 = slim.fully_connected(conv1_flat, 1024, scope='dis_fc1')
+                # if self.label_dim:
+                #     conv1_flat = tf.concat([conv1_flat, label], axis=1)
+                fc1 = slim.fully_connected(conv1_flat, 128, scope='dis_fc1')
                 adv = slim.fully_connected(fc1, 1, scope='dis_out', activation_fn=None, normalizer_fn=None)
                 adv_sig = tf.nn.sigmoid(adv)
 
@@ -402,7 +401,6 @@ class GAN(BaseModel):
         return tf.concat([
         image, label*tf.ones([x_shapes[0], x_shapes[1], x_shapes[2], y_shapes[3]])], 3)
 
-    """ Dream examples from the learned x ~ G(z) by varying some aspect of z """
-    def dream_manifold(self):
 
+    def dream_manifold(self):
         pass

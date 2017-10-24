@@ -17,8 +17,8 @@ inference_dir = 'examples/{}/inference'.format(experiment)
 log_dir = 'examples/{}/logs/{}'.format(experiment, itert)
 save_dir = 'examples/{}/snapshots'.format(experiment)
 
-test_iter = 500
-batch_size = 64
+test_iter = 200
+batch_size = 128
 crop_size = 128
 
 
@@ -37,27 +37,14 @@ with tf.Session(config=config) as sess:
     #     capacity   = batch_size*10,
     #     min_holding= batch_size*5,
     #     threads    = 8)
-    #
-    # test_dataset = ImageDataSet(feat_test_dir,
-    #     image_ext  = image_ext,
-    #     n_classes  = 2,
-    #     batch_size = batch_size,
-    #     crop_size  = crop_size,
-    #     ratio      = 0.5,
-    #     capacity   = batch_size*5,
-    #     min_holding= batch_size,
-    #     threads    = 4)
 
-    # dataset = MNISTDataSet('../MNIST_data',
-    #     batch_size = batch_size)
     dataset = MNISTDataSet('/home/nathan/envs/tensorflow/MNIST_data',
         batch_size = batch_size)
 
     network = GAN(
         sess = sess,
-        n_classes = 2,
-        zed_dim = 64,
-        n_kernels = 16,
+        zed_dim = 100,
+        n_kernels = 64,
         bayesian = False,
         dataset = dataset,
         input_channel = 1,
@@ -66,7 +53,6 @@ with tf.Session(config=config) as sess:
         input_dims = [28,28],
         load_snapshot = False,
         learning_rate = 2e-4,
-        adversarial_training = True,
         label_dim = 10)
 
     ## Has to come after init_op ???
@@ -75,7 +61,6 @@ with tf.Session(config=config) as sess:
 
 
     """ Training loop.
-
     Call network.train_step() once for each global step.
     Insert testing / snapshotting however you want.
     """
