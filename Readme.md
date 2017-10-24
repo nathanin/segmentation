@@ -84,8 +84,9 @@ data/
 
 ### Known things that don't work right
 - Tensorboard only shows me the input pipeline? Where is my model?
-- Input pipeline could & should & must be faster
 - Logging is clunky; iterative experimentation is clunky
+- GAN background for MNIST turns gray; GAN input pipeline is chunky for non-MNIST
+- WHY DOES THE GAN BACKGROUND TURN GRAY. the reference implementation makes nice dark background.
 
 
 #### Comments, feedback, "this is just a bad version of X other repo":
