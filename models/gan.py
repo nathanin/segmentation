@@ -96,6 +96,8 @@ class GAN(BaseModel):
         ## Saver last so all the variables exist
         ## Saver things; TODO add logic that skips the dataset load if we restore
         self._init_saver(self.model_name)
+        self.dream_z = np.random.uniform(-1, 1, [self.batch_size, self.zed_dim]).astype(np.float32)
+        self.dream_batch_labels = self.dataset.mnist.train.next_batch(self.batch_size)
 
 
 
@@ -319,15 +321,9 @@ class GAN(BaseModel):
     """ Lightweight for MNIST dataset
     architecture from the InfoGAN paper
     """
-<<<<<<< HEAD
-    def _discriminator(self, image, reuse=False, training=True):
+    def _discriminator(self, image, label, reuse=False, training=True):
         with slim.arg_scope([slim.convolution2d, slim.fully_connected],
             weights_initializer=tf.truncated_normal_initializer,
-=======
-    def _discriminator(self, image, label=None, reuse=False, training=True):
-        with slim.arg_scope([slim.convolution2d, slim.fully_connected],
-            weights_initializer=tf.truncated_normal,
->>>>>>> 6f96b34234e4347583b9af1793a90642cb74b58a
             normalizer_fn=slim.batch_norm,
             normalizer_params={'is_training': training, 'decay': 0.95, 'updates_collections': None},
             activation_fn=self.leaky_relu,
@@ -341,27 +337,16 @@ class GAN(BaseModel):
                 conv1 = self.concat_tensor_label(conv1, label)
                 print '\t conv1 concat', conv1.get_shape()
             conv2 = slim.convolution2d(conv1, 128, 4, 2, padding='SAME', scope='dis_conv2')
-<<<<<<< HEAD
-            #conv3 = slim.convolution2d(conv2, 256, 4, 2, padding='SAME', scope='dis_conv3')
-            conv2_flat = slim.flatten(conv2)
-
-            adv = slim.fully_connected(conv2_flat, 1, scope='dis_out')
-=======
             conv2_flat = slim.flatten(conv2)
 
             fc1 = slim.fully_connected(conv2_flat, 1024, scope='dis_fc1')
             adv = slim.fully_connected(fc1, 1, scope='dis_out', activation_fn=None, normalizer_fn=None)
->>>>>>> 6f96b34234e4347583b9af1793a90642cb74b58a
             adv_sig = tf.nn.sigmoid(adv)
 
         print 'gan/_discriminator_small():'
         print '\t image', image.get_shape()
         print '\t conv1', conv1.get_shape()
         print '\t conv2', conv2.get_shape()
-<<<<<<< HEAD
-        #print '\t conv3', conv3.get_shape()
-=======
->>>>>>> 6f96b34234e4347583b9af1793a90642cb74b58a
         print '\t conv2_flat', conv2_flat.get_shape()
         print '\t adv', adv.get_shape()
 
