@@ -58,7 +58,7 @@ class BaseModel(object):
 
         if self.adversarial_training:
             self.adversarial_update_freq = 5
-            self.adversarial_lr = 1e-3
+            self.adversarial_lr = 1e-5
             self._adversarial_net_fn = self._adversarial_net
 
         if self.autoencoder:
