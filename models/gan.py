@@ -105,13 +105,13 @@ class GAN(BaseModel):
 
         # print 'batch_x', batch_x.shape, batch_x.dtype, batch_x.min(), batch_x.max()
 
-        _, _, D_loss, G_loss, _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
+        #_, _, D_loss, G_loss, _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
         # _ = self.sess.run(self.gs_increment)
-        # _ = self.sess.run(self.adv_train_op, feed_dict=feed_dict)
-        # _ = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
-        # _ = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
+        D_loss = self.sess.run(self.adv_train_op, feed_dict=feed_dict)
+        G_loss = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
+        G_loss = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
 
-        print 'D loss: {} G loss: {}'.format(D_loss, G_loss)
+        #print 'D loss: {} G loss: {}'.format(D_loss, G_loss)
 
         self.write_summary(self.summary_op, feed_dict=feed_dict)
 
@@ -281,24 +281,28 @@ class GAN(BaseModel):
 
         ## 7 * 7 * 128 = 6272
         # 7 * 7 * 1024 = 50176
+        # 7 * 7 * 512 = 25088
         with slim.arg_scope([slim.fully_connected, slim.convolution2d_transpose],
             weights_initializer=tf.random_normal_initializer,
             normalizer_fn=slim.batch_norm,
             normalizer_params={'is_training': training, 'decay': 0.95},
             reuse=reuse):
-            zed_project = slim.fully_connected(zed, 50176, scope='gen_zed_project')
-            zed_reshape = tf.reshape(zed_project, [-1, 7, 7, 1024], name='gen_zed_reshape')
-            g1 = slim.convolution2d_transpose(zed_reshape, 512, 4, 2, padding='SAME', scope='gen_deconv1')
-            g2 = slim.convolution2d_transpose(g1, 512, 4, 2, padding='SAME', scope='gen_deconv2')
-            g3 = slim.convolution2d_transpose(g2, 128, 4, 2, padding='SAME', scope='gen_deconv3')
+            zed_project = slim.fully_connected(zed, 25088, scope='gen_zed_project')
+            zed_reshape = tf.reshape(zed_project, [-1, 7, 7, 512], name='gen_zed_reshape')
+            g1 = slim.convolution2d_transpose(zed_reshape, 128, 4, 2, padding='SAME', scope='gen_deconv1')
+            #g2 = slim.convolution2d_transpose(g1, 512, 4, 2, padding='SAME', scope='gen_deconv2')
+            #g3 = slim.convolution2d_transpose(g2, 128, 4, 2, padding='SAME', scope='gen_deconv3')
 
-            deconv_out = slim.convolution2d_transpose(g3, 1, 4, 2, padding='SAME', scope='gen_deconv_out', activation_fn=tf.nn.tanh)
+            deconv_out = slim.convolution2d_transpose(g1, 1, 4, 2, padding='SAME', scope='gen_deconv_out', activation_fn=tf.nn.tanh)
 
         print 'gan/_generator_small():'
         print '\t zed', zed.get_shape()
-        print '\t zed_expand', zed_expand.get_shape()
         print '\t zed_project', zed_project.get_shape()
         print '\t zed_reshape', zed_reshape.get_shape()
+        print '\t g1', g1.get_shape()
+        #print '\t g2', g2.get_shape()
+        #print '\t g3', g3.get_shape()
+        print '\t deconv_out', deconv_out.get_shape()
 
         return deconv_out
 
@@ -308,26 +312,26 @@ class GAN(BaseModel):
     architecture from the InfoGAN paper
     """
     def _discriminator(self, image, reuse=False, training=True):
-        with slim.arg_scope([slim.convolution2d],
-            weights_initializer=tf.truncated_normal,
+        with slim.arg_scope([slim.convolution2d, slim.fully_connected],
+            weights_initializer=tf.truncated_normal_initializer,
             normalizer_fn=slim.batch_norm,
             normalizer_params={'is_training': training, 'decay': 0.95, 'updates_collections': None},
             activation_fn=self.leaky_relu,
             reuse=reuse):
             conv1 = slim.convolution2d(image, 64, 4, 2, padding='SAME', scope='dis_conv1')
             conv2 = slim.convolution2d(conv1, 128, 4, 2, padding='SAME', scope='dis_conv2')
-            conv3 = slim.convolution2d(conv2, 256, 4, 2, padding='SAME', scope='dis_conv3')
-            conv3_flat = slim.flatten(conv3)
+            #conv3 = slim.convolution2d(conv2, 256, 4, 2, padding='SAME', scope='dis_conv3')
+            conv2_flat = slim.flatten(conv2)
 
-            adv = slim.fully_connected(conv3_flat, 1, scope='dis_out')
+            adv = slim.fully_connected(conv2_flat, 1, scope='dis_out')
             adv_sig = tf.nn.sigmoid(adv)
 
         print 'gan/_discriminator_small():'
         print '\t image', image.get_shape()
         print '\t conv1', conv1.get_shape()
         print '\t conv2', conv2.get_shape()
-        print '\t conv3', conv3.get_shape()
-        print '\t conv3_flat', conv3_flat.get_shape()
+        #print '\t conv3', conv3.get_shape()
+        print '\t conv2_flat', conv2_flat.get_shape()
         print '\t adv', adv.get_shape()
 
         return adv_sig, adv
