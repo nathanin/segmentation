@@ -17,7 +17,7 @@ inference_dir = 'examples/{}/inference'.format(experiment)
 log_dir = 'examples/{}/logs/{}'.format(experiment, itert)
 save_dir = 'examples/{}/snapshots'.format(experiment)
 
-test_iter = 100
+test_iter = 1000
 batch_size = 64
 crop_size = 128
 
@@ -48,8 +48,10 @@ with tf.Session(config=config) as sess:
     #     min_holding= batch_size,
     #     threads    = 4)
 
-    dataset = MNISTDataSet('../MNIST_data',
-        batch_size = 96)
+    # dataset = MNISTDataSet('../MNIST_data',
+    #     batch_size = batch_size)
+    dataset = MNISTDataSet('/home/nathan/envs/tensorflow/MNIST_data',
+        batch_size = batch_size)
 
     network = GAN(
         sess = sess,
@@ -58,13 +60,12 @@ with tf.Session(config=config) as sess:
         n_kernels = 16,
         bayesian = False,
         dataset = dataset,
-        gan_type = 'small',
         input_channel = 1,
         log_dir = log_dir,
         save_dir = save_dir,
         input_dims = [28,28],
         load_snapshot = False,
-        learning_rate = 1e-3,
+        learning_rate = 5e-4,
         adversarial_training = True)
 
     ## Has to come after init_op ???
@@ -78,16 +79,15 @@ with tf.Session(config=config) as sess:
     Insert testing / snapshotting however you want.
     """
     tstart = time.time()
-    for _ in range(50):
+    for epoch in range(50):
         t_outer_loop = time.time()
-        for k in range(1000):
+        for k in range(5000):
             t_inner_loop = time.time()
             network.train_step()
             if k % test_iter == 0:
-                print 'Dreaming'
                 network.dream()
 
-        print 'Time: {}'.format(time.time() - t_outer_loop)
+        print 'Epoch {} Time: {}'.format(epoch, time.time() - t_outer_loop)
         network.snapshot()
 
     #/end training loop

@@ -12,6 +12,11 @@ from basemodel import BaseModel
 It should implement a method model() and define y_hat,
 along with special losses and overload attributes for training
 to follow the GAN training algo.
+
+copied so many tricks from
+https://github.com/carpedm20/DCGAN-tensorflow
+
+GAN's aren't easy to train..
 """
 
 class GAN(BaseModel):
@@ -31,8 +36,7 @@ class GAN(BaseModel):
         n_kernels = 32,
         autoencoder = True,  ## True just for input reasons; don't really need
         adversarial_training = True,  ## Always true
-        zed_dim = 64,
-        gan_type = 'small'):
+        zed_dim = 64):
 
 
         ## TODO: Check args
@@ -54,6 +58,7 @@ class GAN(BaseModel):
             load_snapshot_from=load_snapshot_from,
             adversarial_training=adversarial_training)
 
+
         self.model_name = 'GAN'
         print 'Setting up Generative Adversarial Network model'
 
@@ -63,20 +68,14 @@ class GAN(BaseModel):
         ## Custom things for this model
         self.n_kernels = n_kernels
         self.zed_dim = zed_dim
-        self.gan_type = gan_type
+        self.adversarial_lr = 2e-4
 
-
-        if self.gan_type == 'small':
-            self._generator_fn = self._generator_small
-            self._adversarial_net_fn = self._descriminator_small
-        else:
-            self._generator_fn = self._generator
-            self._adversarial_net_fn = self._descriminator
-
+        self._generator_fn = self._generator
+        self._adversarial_net_fn = self._descriminator
 
         with tf.name_scope('ConvDeconv') as scope:
             print 'Instantiating GAN'
-            self.y_hat = self.model(reuse=False, training=True)
+            self.model(reuse=False, training=True)
 
         ## Generics
         with tf.name_scope('loss') as scope:
@@ -98,17 +97,43 @@ class GAN(BaseModel):
 
 
 
+    def train_step(self):
+        batch_x, batch_labels = self.dataset.mnist.train.next_batch(self.batch_size)
+        batch_x = self.dataset._reshape_batch(batch_x)
+        batch_z = np.random.uniform(-1, 1, [self.batch_size, self.zed_dim]).astype(np.float32)
+        feed_dict = {self.input_x: batch_x, self.zed_sample: batch_z}
+
+        # print 'batch_x', batch_x.shape, batch_x.dtype, batch_x.min(), batch_x.max()
+
+        _ = self.sess.run(self.gs_increment)
+        _ = self.sess.run(self.adv_train_op, feed_dict=feed_dict)
+        _ = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
+        _ = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
+
+        self.write_summary(self.summary_op, feed_dict=feed_dict)
+
+
+
     """ Overloading from BaseModel """
     def _init_summary_ops(self):
-        self.y_hat_summary = tf.summary.image('y_hat', self.y_hat, max_outputs=4)
-        self.x_real_summary = tf.summary.image('y_real', self.input_y, max_outputs=4)
-        self.summary_op = tf.summary.merge([self.loss_summary,
-            self.bce_real_summary,
-            self.bce_fake_summary,
-            self.gen_loss_summary,
-            self.y_hat_summary,
-            self.x_real_summary])
-        self.summary_op = tf.Print(self.summary_op, ['Writing summary', self.global_step])
+        self.real_loss_summary = tf.summary.scalar('loss_real', self.loss_real)
+        self.fake_loss_summary = tf.summary.scalar('loss_fake', self.loss_fake)
+        self.real_adv_summary = tf.summary.histogram('real_adv', self.real_adv)
+        self.fake_adv_summary = tf.summary.histogram('fake_adv', self.fake_adv)
+        self.zed_sample_summary = tf.summary.histogram('z_sample', self.zed_sample)
+
+        # for grad, var in self.grads:
+        #     tf.summary.histogram(var.name + '/gradient', grad)
+        #
+        # for var in tf.trainable_variables():
+        #     tf.summary.histogram(var.name, var)
+        self.summary_op = tf.summary.merge([self.adv_loss_summary, self.gen_loss_summary,
+            self.real_loss_summary,
+            self.fake_loss_summary,
+            self.real_adv_summary,
+            self.fake_adv_summary,
+            self.zed_sample_summary])
+        # self.summary_op = tf.summary.merge_all()
 
 
     """ Initialize the training ops
@@ -121,18 +146,16 @@ class GAN(BaseModel):
     """
     def _init_training_ops(self):
         print 'Setting up GAN training'
+        ## seg_optimizer used to train the generator
+        self.gen_optimizer = tf.train.AdamOptimizer(self.learning_rate, beta1=0.5, name='genAdam')
+        self.adversarial_optimizer = tf.train.AdamOptimizer(self.adversarial_lr, beta1=0.5, name='descAdam')
 
         with tf.variable_scope('Adversarial') as scope:
             print 'Adversarial x ~ p(data)'
-            self.real_adv = self._adversarial_net_fn(self.input_y, reuse=False)
+            self.real_adv, self.real_adv_logit = self._adversarial_net_fn(self.input_x, reuse=False)
 
-            print 'Adversarial x ~ p(z)'
-            ## Update G(z) only
-            self.fake_adv = self._adversarial_net_fn(self.y_hat, reuse=True)
-            ## Stop the gradient from updating G(z) when we just want to use G(z) to generate some fakes
-            self.y_hat_nograd = tf.stop_gradient(self.y_hat)
-            # self.fake_adv_nograd = self._adversarial_net_fn(self.y_hat_nograd, reuse=True)
-
+            print 'Adversarial x ~ G(z)'
+            self.fake_adv, self.fake_adv_logit = self._adversarial_net_fn(self.y_hat, reuse=True)
 
         ## Separate variables for the optimizers to use - no more tf.stop_gradient !!
         ## https://github.com/carpedm20/DCGAN-tensorflow/blob/master/model.py
@@ -140,50 +163,45 @@ class GAN(BaseModel):
         self.d_vars = [var for var in t_vars if 'dis_' in var.name]
         self.g_vars = [var for var in t_vars if 'gen_' in var.name]
 
-        print self.d_vars
-        print self.g_vars
-
-        ## seg_optimizer used to train the generator
-        self.gen_optimizer = tf.train.AdamOptimizer(self.learning_rate, name='genAdam')
-        self.adversarial_optimizer = tf.train.AdamOptimizer(self.adversarial_lr, name='descAdam')
+        print 'd_vars\n', self.d_vars
+        print 'g_vars\n', self.g_vars
 
         ## Trainig objectives for real and fake images
-        self.real_ex = tf.one_hot(tf.ones_like(tf.argmax(self.real_adv, 1)), 2)
-        self.fake_ex = tf.one_hot(tf.zeros_like(tf.argmax(self.fake_adv, 1)), 2)
+        # self.real_label = tf.one_hot(tf.ones_like(tf.argmax(self.real_adv, 1)), 2)
+        # self.fake_label = tf.one_hot(tf.zeros_like(tf.argmax(self.fake_adv, 1)), 2)
+        self.real_label = tf.ones_like(self.real_adv)
+        self.fake_label = tf.zeros_like(self.fake_adv)
 
-        ## Real should all be real
-        ## E_{x ~ p(data)}[log D(x)]
-        self.l_bce_real = tf.nn.softmax_cross_entropy_with_logits(labels=self.real_ex, logits=self.real_adv)
+        self.loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=self.real_label, logits=self.real_adv_logit))
+        self.loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=self.fake_label, logits=self.fake_adv_logit))
 
-        ## Fakes should all be fake
-        ## E_{x ~ p(z)}[log 1 - D(G(z))]
-        self.l_bce_fake = tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv)
-        self.l_bce_fake_gen = tf.nn.softmax_cross_entropy_with_logits(labels=self.real_ex, logits=self.fake_adv)
-        # self.l_bce_fake_nograd = tf.nn.softmax_cross_entropy_with_logits(labels=self.fake_ex, logits=self.fake_adv_nograd)
+        self.adv_loss_op = self.loss_real + self.loss_fake
+        self.gen_loss_op = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=self.real_label, logits=self.fake_adv_logit))
 
-        ## Losses are the same; but gradients should flow differently
-        ## adv_loss should only flow back to update D(~)
-        self.adv_loss_op = tf.reduce_mean(self.l_bce_real + self.l_bce_fake)
-        ## gen_loss should only flow back to update G(~)
-        self.gen_loss_op = tf.reduce_mean(self.l_bce_fake_gen)
+        # self.adv_loss_op = -tf.reduce_mean(tf.log(self.real_adv) + tf.log(1. - self.fake_adv))
+        # self.gen_loss_op = -tf.reduce_mean(tf.log(self.fake_adv))
 
-        self.adv_loss_op = tf.Print(self.adv_loss_op, ['Adv Loss', self.adv_loss_op, self.global_step])
-        self.gen_loss_op = tf.Print(self.gen_loss_op, ['Gen Loss', self.gen_loss_op, self.global_step])
+        # self.grads = tf.gradients(self.adv_loss_op, tf.trainable_variables())
+        # self.grads = list(zip(self.grads, tf.trainable_variables()))
+        # print 'Grads\n', self.grads
 
         ## ?? slim documentation says to do this for batch_norm layers
-        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        with tf.control_dependencies(update_ops):
-            self.gen_train_op = self.gen_optimizer.minimize(self.gen_loss_op, var_list=self.g_vars)
-            self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op, var_list=self.d_vars)
+        # update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        # print 'update ops\n', update_ops
+        # with tf.control_dependencies(update_ops):
 
+        self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op, var_list=self.d_vars)
+        self.gen_train_op = self.gen_optimizer.minimize(self.gen_loss_op, var_list=self.g_vars)
 
-        self.loss_summary = tf.summary.scalar('loss', self.adv_loss_op)
-        self.train_op_list = [self.gen_train_op,
-                              self.gs_increment]
-        self.adversarial_train_list = [self.adv_train_op]
+        # self.train_op_list = [self.gen_train_op, self.adv_train_op, self.gs_increment]
+        # self.adversarial_train_list = [self.adv_train_op]
 
-        self.bce_real_summary = tf.summary.scalar('l_bce_real', tf.reduce_mean(self.l_bce_real))
-        self.bce_fake_summary = tf.summary.scalar('l_bce_fake', tf.reduce_mean(self.l_bce_fake))
+        # self.bce_real_summary = tf.summary.scalar('l_bce_real', tf.reduce_mean(self.l_bce_real))
+        # self.bce_fake_summary = tf.summary.scalar('l_bce_fake', tf.reduce_mean(self.l_bce_fake))
+        self.adv_loss_summary = tf.summary.scalar('adv_loss', self.adv_loss_op)
         self.gen_loss_summary = tf.summary.scalar('gen_loss', self.gen_loss_op)
         # self.train_op_list = [self.train_op, self.gs_increment]
 
@@ -197,17 +215,25 @@ class GAN(BaseModel):
     """
     def _init_dream_ops(self):
         print 'Initializing dream ops'
-        zed_shape = [self.batch_size, self.zed_dim]
-        zed_sample = tf.random_normal(zed_shape, name='dream_z')
+        # zed_shape = [self.batch_size, self.zed_dim]
+        # zed_sample = tf.random_normal(zed_shape, name='dream_z')
+        # self.dream_z = tf.random_uniform(zed_shape, -1.0, 1.0, name='dream_z')
+        # zed_sample = tf.Print(zed_sample, ['dream sampling'])
+        self.dream_z = tf.placeholder('float32', [None, self.zed_dim], name='dream_z')
 
-        self.y_dream = self._generator_fn(zed_sample, reuse=True, training=False)
-        self.y_dream_summary = tf.summary.image('y_dream', self.y_dream, max_outputs=8)
+        self.y_dream = self._generator_fn(self.dream_z, reuse=True)
+        self.y_dream_summary = tf.summary.image('y_dream', self.y_dream, max_outputs=4)
+
+
 
 
 
     """ Execute the dreaming op. Use summary writer """
     def dream(self):
-        self.write_summary(self.y_dream_summary)
+        batch_z = np.random.uniform(-1, 1, [self.batch_size, self.zed_dim]).astype(np.float32)
+        feed_dict = {self.dream_z: batch_z}
+        self.write_summary(self.y_dream_summary, feed_dict=feed_dict)
+
 
 
 
@@ -224,102 +250,85 @@ class GAN(BaseModel):
     """
     def model(self, reuse=False, training=True):
         ## Shape:
-        zed_shape = [self.batch_size, self.zed_dim]
-        zed_sample = tf.random_normal(zed_shape, name='epsilon')
+        # zed_shape = [self.batch_size, self.zed_dim]
+        # zed_sample = tf.random_normal(zed_shape, name='epsilon')
+        # self.zed_sample = tf.random_uniform(zed_shape, -1.0, 1.0, name='epsilon')
+        self.zed_sample = tf.placeholder('float32', [None, self.zed_dim], name='zed_sample')
+        # self.zed_sample = tf.Print(self.zed_sample, ['zed sample'])
 
-        y_hat = self._generator_fn(zed_sample, reuse=reuse, training=training)
+        self.y_hat = self._generator_fn(self.zed_sample, reuse=reuse, training=training)
+        # self.y_hat = tf.Print(self.y_hat, ['yhat'])
 
-        return y_hat
+
+
+
+
 
 
     """ Small generator for MNIST
     architecture from the InfoGAN paper
     """
-    def _generator_small(self, zed, reuse=False, training=True):
+    def _generator(self, zed, reuse=False, training=True):
         zed_expand = slim.fully_connected(zed, 1024, scope='gen_zed_expand', reuse=reuse)
-        zed_expand = slim.batch_norm(zed_expand, scope='gen_bn1', reuse=reuse, is_training=training)
+        zed_expand = slim.batch_norm(zed_expand, scope='gen_bn1', reuse=reuse, is_training=training, updates_collections=None)
 
-        zed_expand = tf.expand_dims(zed_expand, 1)
-        zed_expand = tf.expand_dims(zed_expand, 2)
-        deconv1_0 = slim.convolution2d_transpose(zed_expand, 128, 7, 1, padding='VALID', scope='gen_deconv1_0', reuse=reuse)
-        deconv1_0 = slim.batch_norm(deconv1_0, scope='gen_bn2', reuse=reuse, is_training=training)
+        zed_project = slim.fully_connected(zed_expand, 6272, scope='gen_zed_project', reuse=reuse)
+        zed_project = slim.batch_norm(zed_project, scope='gen_bn2', reuse=reuse, is_training=training, updates_collections=None)
 
-        deconv1_1 = slim.convolution2d_transpose(deconv1_0, 64, 4, 2, padding='SAME', scope='gen_deconv1_1', reuse=reuse)
-        deconv1_1 = slim.batch_norm(deconv1_1, scope='gen_bn3', reuse=reuse, is_training=training)
+        zed_reshape = tf.reshape(zed_project, [-1, 7, 7, 128], name='gen_zed_reshape')
+        deconv1_1 = slim.convolution2d_transpose(zed_reshape, 64, 4, 2, padding='SAME', scope='gen_deconv1_1', reuse=reuse)
+        deconv1_1 = slim.batch_norm(deconv1_1, scope='gen_bn3', reuse=reuse, is_training=training, updates_collections=None)
 
         deconv_out = slim.convolution2d_transpose(deconv1_1, 1, 4, 2, padding='SAME', scope='gen_deconv_out',
-            reuse=reuse, activation_fn=None)
+            reuse=reuse, activation_fn=tf.nn.tanh)
 
         print 'gan/_generator_small():'
-        print '\tzed', zed.get_shape()
-        print '\tzed_expand', zed_expand.get_shape()
-        print '\tdeconv1_0', deconv1_0.get_shape()
-        print '\tdeconv1_1', deconv1_1.get_shape()
-        print '\tdeconv_out', deconv_out.get_shape()
+        print '\t zed', zed.get_shape()
+        print '\t zed_expand', zed_expand.get_shape()
+        print '\t zed_project', zed_project.get_shape()
+        print '\t zed_reshape', zed_reshape.get_shape()
+        # print '\t deconv1_0', deconv1_0.get_shape()
+        print '\t deconv1_1', deconv1_1.get_shape()
+        print '\t deconv_out', deconv_out.get_shape()
 
         return deconv_out
 
-
-    def _generator(self, zed, reuse=False, training=True):
-        net = slim.convolution2d_transpose(zed, self.n_kernels*2, 5, 3, padding='VALID', scope='deconv1_0', reuse=reuse)
-        net = slim.batch_norm(net, scope='bn6', reuse=reuse, is_training=training)
-        print '\tdeconv1_0', net.get_shape()
-        if self.bayesian:
-            net = slim.dropout(net, scope='drop2')
-
-        net = slim.convolution2d_transpose(net, self.n_kernels, 5, 2, padding='VALID', scope='deconv2_0', reuse=reuse)
-        print '\tdeconv2_0', net.get_shape()
-        net = slim.convolution2d_transpose(net, self.n_kernels, 5, 2, padding='VALID', scope='deconv2_1', reuse=reuse)
-        net = slim.batch_norm(net, scope='bn7', reuse=reuse, is_training=training)
-        print '\tdeconv2_1', net.get_shape()
-        ## Set to 1/2 input size for 2x upconv
-        net = tf.image.resize_bilinear(net, [self.x_dim//2, self.y_dim//2])
-        print '\tresize', net.get_shape()
-
-        net = slim.convolution2d_transpose(net, self.n_classes, 2, 2, padding='VALID', scope='deconv3_0', reuse=reuse)
-        net = slim.batch_norm(net, scope='bn8', reuse=reuse, is_training=training)
-        print '\tdeconv3_0', net.get_shape()
-
-        ## Force to be the same size as input, if it's off by one
-        net = tf.image.resize_image_with_crop_or_pad(net, self.x_dim, self.y_dim)
-        print '\tforce_resize', net.get_shape()
-
-        net = slim.convolution2d(net, self.n_classes, 3, 1, padding='SAME', scope='conv_out', reuse=reuse,
-            activation_fn=None)
-        print '\tconv_output', net.get_shape()
-
-        return net
 
 
     """ Lightweight for MNIST dataset
     architecture from the InfoGAN paper
     """
-    def _descriminator_small(self, input_tensor, reuse=False, training=True):
-        conv1_0 = slim.convolution2d(input_tensor, 64, 4, 2, padding='SAME', scope='dis_conv1_0', reuse=reuse)
-        conv1_1 = slim.convolution2d(conv1_0, 128, 4, 2, padding='SAME', scope='dis_conv1_1', reuse=reuse)
-        conv1_1 = slim.batch_norm(conv1_1, scope='dis_bn1', reuse=reuse, is_training=training)
+    def _descriminator(self, input_tensor, reuse=False, training=True):
+        conv1_0 = slim.convolution2d(input_tensor, 64, 4, 2, padding='SAME', scope='dis_conv1_0',
+            reuse=reuse, activation_fn=self.leaky_relu)
+        conv1_1 = slim.convolution2d(conv1_0, 128, 4, 2, padding='SAME', scope='dis_conv1_1',
+            reuse=reuse, activation_fn=self.leaky_relu)
+        conv1_1 = slim.batch_norm(conv1_1, scope='dis_bn1', reuse=reuse, is_training=training, updates_collections=None)
 
-        pool = slim.max_pool2d(conv1_1, 7, 1, scope='dis_pool')
+        # pool = slim.max_pool2d(conv1_1, 7, 1, scope='dis_pool')
+        conv1_1_flat = slim.flatten(conv1_1)
 
-        conv1_1_flat = slim.flatten(pool)
-        fc_1 = slim.fully_connected(conv1_1_flat, 1024, scope='dis_fc1', reuse=reuse)
-        fc_1 = slim.batch_norm(fc_1, scope='dis_bn2', reuse=reuse, is_training=training)
-        decision = slim.fully_connected(fc_1, 2, scope='dis_out', reuse=reuse)
+        # conv1_1_flat = slim.flatten(pool)
+        fc_1 = slim.fully_connected(conv1_1_flat, 1024, scope='dis_fc1', reuse=reuse,
+            activation_fn=self.leaky_relu)
+        fc_1 = slim.batch_norm(fc_1, scope='dis_bn2', reuse=reuse, is_training=training, updates_collections=None)
+
+        adv = slim.fully_connected(fc_1, 1, scope='dis_out', reuse=reuse, activation_fn=None)
+        adv_sig = tf.nn.sigmoid(adv)
 
         print 'gan/_descriminator_small():'
-        print '\tinput_tensor', input_tensor.get_shape()
-        print '\tconv1_0', conv1_0.get_shape()
-        print '\tconv1_1', conv1_1.get_shape()
-        print '\tpool', pool.get_shape()
-        print '\tconv1_1_flat', conv1_1_flat.get_shape()
-        print '\tfc_1', fc_1.get_shape()
-        print '\tdecision', decision.get_shape()
+        print '\t input_tensor', input_tensor.get_shape()
+        print '\t conv1_0', conv1_0.get_shape()
+        print '\t conv1_1', conv1_1.get_shape()
+        print '\t conv1_1_flat', conv1_1_flat.get_shape()
+        print '\t fc_1', fc_1.get_shape()
+        print '\t adv', adv.get_shape()
 
-        return decision
+        return adv_sig, adv
 
-
-
-
-    def _descriminator(self, input_tensor, reuse=False, training=True):
-
-        pass
+    """ leaky_relu from:
+    https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/nn_ops.py """
+    def leaky_relu(self, features, alpha=0.2):
+        features = tf.convert_to_tensor(features)
+        alpha = tf.convert_to_tensor(alpha)
+        return tf.maximum(alpha * features, features)

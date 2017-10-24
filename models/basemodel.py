@@ -56,11 +56,6 @@ class BaseModel(object):
 
         self.load_snapshot_from = load_snapshot_from if load_snapshot_from else False
 
-        if self.adversarial_training:
-            self.adversarial_update_freq = 5
-            self.adversarial_lr = 1e-3
-            self._adversarial_net_fn = self._adversarial_net
-
         if self.autoencoder:
             print 'AUTOENCODER MODE'
             print '\tSetting objective function to MSE'
@@ -486,24 +481,12 @@ class BaseModel(object):
             batch = self.dataset._reshape_batch(batch)
             feed_dict = {self.input_x: batch}
             _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
-
-            gs = tf.train.global_step(self.sess, self.global_step)
-            if gs % self.summary_iter == 0:
-                self.write_summary(self.summary_op, feed_dict=feed_dict)
-
-            if self.adversarial_training and gs % self.adversarial_update_freq==0:
-                _ = self.sess.run(self.adversarial_train_list, feed_dict=feed_dict)
+            self.write_summary(self.summary_op, feed_dict=feed_dict)
 
         else:
             _ = self.sess.run(self.train_op_list)
+            self.write_summary(self.summary_op)
 
-            gs = tf.train.global_step(self.sess, self.global_step)
-            if gs % self.summary_iter == 0:
-                self.write_summary(self.summary_op)
-
-        ## Asynchronous adversary updating
-            if self.adversarial_training and gs % self.adversarial_update_freq==0:
-                _ = self.sess.run(self.adversarial_train_list)
 
 
 
@@ -528,7 +511,7 @@ class BaseModel(object):
             batch = self.dataset.mnist.test.next_batch(self.batch_size)[0]
             batch = self.dataset._reshape_batch(batch)
             # print 'batch:', batch.shape, batch.dtype
-            feed_dict = {self.test_x: batch, self.input_x: batch}
+            feed_dict = {self.test_x: batch/255.0}
             self.write_summary(self.test_summary_op, feed_dict=feed_dict)
         else:
             self.write_summary(self.test_summary_op)
