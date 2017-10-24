@@ -144,7 +144,7 @@ class BaseModel(object):
     """ Instantiate input functions from a dataset """
     def _init_input(self):
         tensor_dims = [
-            None,
+            self.batch_size,
             self.input_dims[0],
             self.input_dims[1],
             self.input_channel ]

@@ -17,7 +17,7 @@ inference_dir = 'examples/{}/inference'.format(experiment)
 log_dir = 'examples/{}/logs/{}'.format(experiment, itert)
 save_dir = 'examples/{}/snapshots'.format(experiment)
 
-test_iter = 1000
+test_iter = 500
 batch_size = 64
 crop_size = 128
 
@@ -65,8 +65,9 @@ with tf.Session(config=config) as sess:
         save_dir = save_dir,
         input_dims = [28,28],
         load_snapshot = False,
-        learning_rate = 5e-4,
-        adversarial_training = True)
+        learning_rate = 2e-4,
+        adversarial_training = True,
+        label_dim = 10)
 
     ## Has to come after init_op ???
     coord = tf.train.Coordinator()
@@ -81,10 +82,11 @@ with tf.Session(config=config) as sess:
     tstart = time.time()
     for epoch in range(50):
         t_outer_loop = time.time()
-        for k in range(5000):
+        for k in range(1001):
             t_inner_loop = time.time()
             network.train_step()
             if k % test_iter == 0:
+                print 'Dreaming'
                 network.dream()
 
         print 'Epoch {} Time: {}'.format(epoch, time.time() - t_outer_loop)

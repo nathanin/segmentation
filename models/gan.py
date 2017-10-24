@@ -72,12 +72,22 @@ class GAN(BaseModel):
         self.adversarial_lr = 2e-4
         self.label_dim = label_dim
 
+        if self.label_dim:
+            self.label_in = tf.placeholder('uint8', [self.batch_size])
+            self.label_in_onehot = tf.squeeze(tf.one_hot(self.label_in, self.label_dim))
+            print 'Set up labels: {} one hot: {}'.format(
+                self.label_in.get_shape(), self.label_in_onehot.get_shape())
+        else:
+            self.label_in = None
+
         self._generator_fn = self._generator
         self._adversarial_net_fn = self._discriminator
 
         with tf.name_scope('ConvDeconv') as scope:
             print 'Instantiating GAN'
-            self.model(reuse=False, training=True)
+            self.zed_sample = tf.placeholder('float32', [None, self.zed_dim], name='zed_sample')
+            # self.model(zed_in, reuse=False, training=True)
+            self.y_hat = self._generator_fn(self.zed_sample, self.label_in_onehot)
 
         ## Generics
         with tf.name_scope('loss') as scope:
@@ -96,8 +106,14 @@ class GAN(BaseModel):
         ## Saver last so all the variables exist
         ## Saver things; TODO add logic that skips the dataset load if we restore
         self._init_saver(self.model_name)
-        self.dream_z = np.random.uniform(-1, 1, [self.batch_size, self.zed_dim]).astype(np.float32)
-        self.dream_batch_labels = self.dataset.mnist.train.next_batch(self.batch_size)
+
+
+        ## Set up a constant for dream feeding
+        self.dream_z_sample = np.random.uniform(-1, 1, [self.batch_size, self.zed_dim]).astype(np.float32)
+        _, self.dream_label_sample = self.dataset.mnist.train.next_batch(self.batch_size)
+        # self.dream_label_sample = tf.one_hot(self.dream_label_sample, self.label_dim)
+        print 'Dream sample z:', self.dream_z_sample.shape
+        print 'Dream sample label:', self.dream_label_sample.shape
 
 
 
@@ -109,11 +125,12 @@ class GAN(BaseModel):
 
         # print 'batch_x', batch_x.shape, batch_x.dtype, batch_x.min(), batch_x.max()
 
-        #_, _, D_loss, G_loss, _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
+        _, _, D_loss, G_loss, _ = self.sess.run(self.train_op_list, feed_dict=feed_dict)
+
         # _ = self.sess.run(self.gs_increment)
-        D_loss = self.sess.run(self.adv_train_op, feed_dict=feed_dict)
-        G_loss = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
-        G_loss = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
+        # D_loss = self.sess.run(self.adv_train_op, feed_dict=feed_dict)
+        # G_loss = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
+        # G_loss = self.sess.run(self.gen_train_op, feed_dict=feed_dict)
 
         #print 'D loss: {} G loss: {}'.format(D_loss, G_loss)
 
@@ -128,20 +145,24 @@ class GAN(BaseModel):
         self.real_adv_summary = tf.summary.histogram('real_adv', self.real_adv)
         self.fake_adv_summary = tf.summary.histogram('fake_adv', self.fake_adv)
         self.zed_sample_summary = tf.summary.histogram('z_sample', self.zed_sample)
-        if self.label_in:
-            self.label_in_summary = tf.summary.histogram('label_hist', tf.argmax(self.label_in, 1))
+        if self.label_dim:
+            self.label_in_summary = tf.summary.histogram('label_hist', tf.argmax(self.label_in_onehot, 1))
 
-        # for grad, var in self.grads:
-        #     tf.summary.histogram(var.name + '/gradient', grad)
-        #
-        # for var in tf.trainable_variables():
-        #     tf.summary.histogram(var.name, var)
+        grad_sum_list = []
+        for grad, var in self.grads:
+            grad_sum_list.append(f.summary.histogram(var.name + '/gradient', grad))
+
+        var_sum_list = []
+        for var in tf.trainable_variables():
+            var_sum_list.append(tf.summary.histogram(var.name, var))
+
         self.summary_op = tf.summary.merge([self.adv_loss_summary, self.gen_loss_summary,
             self.real_loss_summary,
             self.fake_loss_summary,
             self.real_adv_summary,
             self.fake_adv_summary,
-            self.zed_sample_summary])
+            self.zed_sample_summary,
+            self.label_in_summary]+ var_sum_list)
         # self.summary_op = tf.summary.merge_all()
 
 
@@ -159,18 +180,12 @@ class GAN(BaseModel):
         self.gen_optimizer = tf.train.AdamOptimizer(self.learning_rate, beta1=0.5, name='genAdam')
         self.adversarial_optimizer = tf.train.AdamOptimizer(self.adversarial_lr, beta1=0.5, name='descAdam')
 
-        if self.label_dim:
-            self.label_in = tf.placeholder('float32', [self.batch_size, 1])
-            self.label_in = tf.one_hot(self.label_in)
-        else:
-            self.label_in = None
 
-        with tf.variable_scope('Adversarial') as scope:
-            print 'Adversarial x ~ p(data)'
-            self.real_adv, self.real_adv_logit = self._adversarial_net_fn(self.input_x, self.label_in, reuse=False)
+        print 'Adversarial x ~ p(data)'
+        self.real_adv, self.real_adv_logit = self._adversarial_net_fn(self.input_x, self.label_in_onehot, reuse=False)
 
-            print 'Adversarial x ~ G(z)'
-            self.fake_adv, self.fake_adv_logit = self._adversarial_net_fn(self.y_hat, self.label_in, reuse=True)
+        print 'Adversarial x ~ G(z)'
+        self.fake_adv, self.fake_adv_logit = self._adversarial_net_fn(self.y_hat, self.label_in_onehot, reuse=True)
 
         ## Separate variables for the optimizers to use - no more tf.stop_gradient !!
         ## https://github.com/carpedm20/DCGAN-tensorflow/blob/master/model.py
@@ -208,10 +223,12 @@ class GAN(BaseModel):
         # print 'update ops\n', update_ops
         # with tf.control_dependencies(update_ops):
 
-        self.adv_train_op = slim.learning.create_train_op(self.adv_loss_op, self.adversarial_optimizer)
-        self.gen_train_op = slim.learning.create_train_op(self.gen_loss_op, self.gen_optimizer)
-        # self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op, var_list=self.d_vars)
-        # self.gen_train_op = self.gen_optimizer.minimize(self.gen_loss_op, var_list=self.g_vars)
+        # self.adv_train_op = slim.learning.create_train_op(
+        #     self.adv_loss_op, self.adversarial_optimizer, variables_to_train=self.d_vars)
+        # self.gen_train_op = slim.learning.create_train_op(
+        #     self.gen_loss_op, self.gen_optimizer, variables_to_train=self.g_vars)
+        self.adv_train_op = self.adversarial_optimizer.minimize(self.adv_loss_op, var_list=self.d_vars)
+        self.gen_train_op = self.gen_optimizer.minimize(self.gen_loss_op, var_list=self.g_vars)
 
         self.train_op_list = [self.adv_train_op, self.gen_train_op,
             self.adv_loss_op, self.gen_loss_op, self.gs_increment]
@@ -236,22 +253,20 @@ class GAN(BaseModel):
         # zed_sample = tf.random_normal(zed_shape, name='dream_z')
         # self.dream_z = tf.random_uniform(zed_shape, -1.0, 1.0, name='dream_z')
         # zed_sample = tf.Print(zed_sample, ['dream sampling'])
-        self.dream_z = tf.placeholder('float32', [None, self.zed_dim], name='dream_z')
+        self.dream_z = tf.placeholder('float32', [self.batch_size, self.zed_dim], name='dream_z')
+        self.dream_label = tf.placeholder('uint8', [self.batch_size], name='dream_label')
+        self.dream_label_onehot = tf.one_hot(self.dream_label, self.label_dim)
 
-        self.y_dream = self._generator_fn(self.dream_z, reuse=True)
+        self.y_dream = self._generator_fn(self.dream_z, self.dream_label_onehot, reuse=True)
         self.y_dream_summary = tf.summary.image('y_dream', self.y_dream, max_outputs=4)
-
-
 
 
 
     """ Execute the dreaming op. Use summary writer """
     def dream(self):
-        batch_z = np.random.uniform(-1, 1, [self.batch_size, self.zed_dim]).astype(np.float32)
-        feed_dict = {self.dream_z: batch_z}
+        feed_dict = {self.dream_z: self.dream_z_sample,
+                     self.dream_label: self.dream_label_sample}
         self.write_summary(self.y_dream_summary, feed_dict=feed_dict)
-
-
 
 
 
@@ -265,52 +280,60 @@ class GAN(BaseModel):
     from y_hat ~ P(X). That is, the reals from the fakes.
     D(y_hat) is built into basemodel so we force adversarial_training = True
     """
-    def model(self, reuse=False, training=True):
+    # def model(self, zed_in, reuse=False, training=True):
         ## Shape:
         # zed_shape = [self.batch_size, self.zed_dim]
         # zed_sample = tf.random_normal(zed_shape, name='epsilon')
         # self.zed_sample = tf.random_uniform(zed_shape, -1.0, 1.0, name='epsilon')
-        self.zed_sample = tf.placeholder('float32', [None, self.zed_dim], name='zed_sample')
         # self.zed_sample = tf.Print(self.zed_sample, ['zed sample'])
 
-        self.y_hat = self._generator_fn(self.zed_sample, reuse=reuse, training=training)
+        # y_hat = self._generator_fn(self.zed_sample, self.label_in_onehot, reuse=reuse, training=training)
         # self.y_hat = tf.Print(self.y_hat, ['yhat'])
-
-
-
-
+        # return y_hat
 
 
 
     """ Small generator for MNIST
     architecture from the InfoGAN paper
     """
-    def _generator(self, zed, reuse=False, training=True):
-        # zed_expand = slim.fully_connected(zed, 1024, scope='gen_zed_expand',
-        #     weights_initializer=tf.random_normal_initializer,
-        #     reuse=reuse)
-        # zed_expand = slim.batch_norm(zed_expand, scope='gen_bn1', reuse=reuse, is_training=training, updates_collections=None)
-
+    def _generator(self, zed, label=None, reuse=False, training=True):
         ## 7 * 7 * 128 = 6272
-        # 7 * 7 * 1024 = 50176
-        # 7 * 7 * 512 = 25088
-        with slim.arg_scope([slim.fully_connected, slim.convolution2d_transpose],
-            weights_initializer=tf.random_normal_initializer,
-            normalizer_fn=slim.batch_norm,
-            normalizer_params={'is_training': training, 'decay': 0.95},
-            reuse=reuse):
-            zed_project = slim.fully_connected(zed, 25088, scope='gen_zed_project')
-            zed_reshape = tf.reshape(zed_project, [-1, 7, 7, 512], name='gen_zed_reshape')
-            g1 = slim.convolution2d_transpose(zed_reshape, 128, 4, 2, padding='SAME', scope='gen_deconv1')
-            #g2 = slim.convolution2d_transpose(g1, 512, 4, 2, padding='SAME', scope='gen_deconv2')
-            #g3 = slim.convolution2d_transpose(g2, 128, 4, 2, padding='SAME', scope='gen_deconv3')
+        ## 7 * 7 * 1024 = 50176
+        ## 7 * 7 * 512 = 25088
+        with tf.variable_scope('Generator') as scope:
+            if reuse:
+                scope.reuse_variables()
+            with slim.arg_scope([slim.fully_connected, slim.convolution2d_transpose],
+                weights_initializer=tf.random_normal_initializer,
+                normalizer_fn=slim.batch_norm,
+                normalizer_params={'is_training': training, 'decay': 0.95},
+                reuse=reuse):
 
-            deconv_out = slim.convolution2d_transpose(g1, 1, 4, 2, padding='SAME', scope='gen_deconv_out', activation_fn=tf.nn.tanh)
+                if self.label_dim:
+                    zed = tf.concat([zed, label], axis=1)
+                    label_tensor = tf.reshape(label, [self.batch_size, 1, 1, self.label_dim])
+
+                zed_project = slim.fully_connected(zed, 25088, scope='gen_zed_project')
+                g0 = tf.reshape(zed_project, [-1, 7, 7, 512], name='gen_zed_reshape')
+
+                if self.label_dim:
+                    g0 = self.concat_tensor_label(g0, label_tensor)
+
+                g1 = slim.convolution2d_transpose(g0, 128, 4, 2, padding='SAME', scope='gen_deconv1') ## 14 x 14
+                #g2 = slim.convolution2d_transpose(g1, 512, 4, 2, padding='SAME', scope='gen_deconv2')
+                #g3 = slim.convolution2d_transpose(g2, 128, 4, 2, padding='SAME', scope='gen_deconv3')
+
+                if self.label_dim:
+                    g1 = self.concat_tensor_label(g1, label_tensor)
+
+                ## 28 x 28
+                deconv_out = slim.convolution2d_transpose(g1, 1, 4, 2, padding='SAME',
+                    scope='gen_deconv_out', activation_fn=tf.nn.tanh)
 
         print 'gan/_generator_small():'
         print '\t zed', zed.get_shape()
         print '\t zed_project', zed_project.get_shape()
-        print '\t zed_reshape', zed_reshape.get_shape()
+        print '\t g0', g0.get_shape()
         print '\t g1', g1.get_shape()
         #print '\t g2', g2.get_shape()
         #print '\t g3', g3.get_shape()
@@ -322,26 +345,31 @@ class GAN(BaseModel):
     architecture from the InfoGAN paper
     """
     def _discriminator(self, image, label, reuse=False, training=True):
-        with slim.arg_scope([slim.convolution2d, slim.fully_connected],
-            weights_initializer=tf.truncated_normal_initializer,
-            normalizer_fn=slim.batch_norm,
-            normalizer_params={'is_training': training, 'decay': 0.95, 'updates_collections': None},
-            activation_fn=self.leaky_relu,
-            reuse=reuse):
-            if label:
-                image = self.concat_tensor_label(image, label)
-                print '\t image concat', image.get_shape()
-            conv1 = slim.convolution2d(image, 64, 4, 2, padding='SAME', scope='dis_conv1')
+        with tf.variable_scope('Discriminator') as scope:
+            if reuse:
+                scope.reuse_variables()
 
-            if label:
-                conv1 = self.concat_tensor_label(conv1, label)
-                print '\t conv1 concat', conv1.get_shape()
-            conv2 = slim.convolution2d(conv1, 128, 4, 2, padding='SAME', scope='dis_conv2')
-            conv2_flat = slim.flatten(conv2)
+            with slim.arg_scope([slim.convolution2d, slim.fully_connected],
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+                normalizer_fn=slim.batch_norm,
+                normalizer_params={'is_training': training, 'decay': 0.95, 'updates_collections': None},
+                activation_fn=self.leaky_relu,
+                reuse=reuse):
+                if self.label_dim:
+                    print '\t DISCRIMINATOR LABEL', label.get_shape()
+                    image = self.concat_tensor_label(image, label)
+                    print '\t image concat', image.get_shape()
+                conv1 = slim.convolution2d(image, 64, 4, 2, padding='SAME', scope='dis_conv1')
 
-            fc1 = slim.fully_connected(conv2_flat, 1024, scope='dis_fc1')
-            adv = slim.fully_connected(fc1, 1, scope='dis_out', activation_fn=None, normalizer_fn=None)
-            adv_sig = tf.nn.sigmoid(adv)
+                if self.label_dim:
+                    conv1 = self.concat_tensor_label(conv1, label)
+                    print '\t conv1 concat', conv1.get_shape()
+                conv2 = slim.convolution2d(conv1, 128, 4, 2, padding='SAME', scope='dis_conv2')
+                conv2_flat = slim.flatten(conv2)
+
+                fc1 = slim.fully_connected(conv2_flat, 1024, scope='dis_fc1')
+                adv = slim.fully_connected(fc1, 1, scope='dis_out', activation_fn=None, normalizer_fn=None)
+                adv_sig = tf.nn.sigmoid(adv)
 
         print 'gan/_discriminator_small():'
         print '\t image', image.get_shape()
@@ -364,6 +392,8 @@ class GAN(BaseModel):
         label = tf.reshape(label, [self.batch_size, 1, 1, self.label_dim])
         x_shapes = image.get_shape()
         y_shapes = label.get_shape()
+        # print 'concat_tensor_label x_shapes', x_shapes
+        # print 'concat_tensor_label y_shapes', y_shapes
 
         ## [batch, h, w, label_dim]
         return tf.concat([
