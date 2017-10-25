@@ -17,7 +17,7 @@ inference_dir = 'examples/{}/inference'.format(experiment)
 log_dir = 'examples/{}/logs/{}'.format(experiment, itert)
 save_dir = 'examples/{}/snapshots'.format(experiment)
 
-test_iter = 200
+test_iter = 500
 batch_size = 128
 crop_size = 128
 
@@ -43,7 +43,7 @@ with tf.Session(config=config) as sess:
 
     network = GAN(
         sess = sess,
-        zed_dim = 100,
+        zed_dim = 2,
         n_kernels = 64,
         bayesian = False,
         dataset = dataset,
@@ -67,7 +67,7 @@ with tf.Session(config=config) as sess:
     tstart = time.time()
     for epoch in range(50):
         t_outer_loop = time.time()
-        for k in range(1001):
+        for k in range(2500):
             t_inner_loop = time.time()
             network.train_step()
             if k % test_iter == 0:
