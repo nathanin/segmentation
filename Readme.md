@@ -1,3 +1,7 @@
+# Permanently replaced
+
+This repository is re-implemented at https://github.com/nathanin/tfmodels
+
 # Tensorflow Segmentation Networks
 
 I've noticed that most implementations include just one network architecture.
