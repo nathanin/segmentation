@@ -1,4 +1,4 @@
-# Permanently replaced
+# Permanently Discontinued
 
 This repository is re-implemented at https://github.com/nathanin/tfmodels
 
